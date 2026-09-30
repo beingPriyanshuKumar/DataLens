@@ -36,9 +36,15 @@ yarn-error.log*
 diagnosis-evidence/
 fix-evidence/
 test-evidence/
+audit-evidence/
+ui-baseline/
+verify-evidence/
+.process/
 
 # OS & Editor
 .DS_Store
 Thumbs.db
 *.swp
 *.swo
+*.bak
+*.log

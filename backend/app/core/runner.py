@@ -224,11 +224,15 @@ async def execute_run(run_id: str) -> None:
             }
 
             # Step 1: Search
-            await emit(run_id, EventLevel.INFO, "search", f"Searching with {len(plan.queries)} queries")
+            await emit(
+                run_id, EventLevel.INFO, "search", f"Searching with {len(plan.queries)} queries"
+            )
             search_results = await search_multiple(
                 plan.queries, limit_per_query=10, region=spec.region
             )
-            await emit(run_id, EventLevel.INFO, "search", f"Found {len(search_results)} candidate URLs")
+            await emit(
+                run_id, EventLevel.INFO, "search", f"Found {len(search_results)} candidate URLs"
+            )
 
         if await _is_cancelled(run_id):
             await _update_run(run_id, status=RunStatus.CANCELLED, finished_at=datetime.now(UTC))
@@ -345,9 +349,7 @@ async def execute_run(run_id: str) -> None:
             )
             pipeline_stats["hallucinated_count"] += hallucinated
             pipeline_stats["verified_count"] += len(verified)
-            pipeline_stats["fields_nulled"] = (
-                pipeline_stats.get("fields_nulled", 0) + fields_nulled
-            )
+            pipeline_stats["fields_nulled"] = pipeline_stats.get("fields_nulled", 0) + fields_nulled
             if hallucinated > 0:
                 pipeline_stats["dropped_reasons"]["evidence_mismatch"] = (
                     pipeline_stats["dropped_reasons"].get("evidence_mismatch", 0) + hallucinated

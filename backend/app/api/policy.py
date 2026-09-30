@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+
 from app.collectors.fetcher import MAX_RESPONSE_BYTES
 from app.collectors.policy import BLOCKED_DOMAINS, USER_AGENT
 from app.config import settings

@@ -74,9 +74,7 @@ def _extract_grounding_context(evidence: str, page_text: str, window: int = 200)
                 before = before.split(sep)[-1]
 
         # Search forward from end of evidence, stopping at section boundaries
-        after = page_text[
-            idx + len(evidence) : min(len(page_text), idx + len(evidence) + window)
-        ]
+        after = page_text[idx + len(evidence) : min(len(page_text), idx + len(evidence) + window)]
         for sep in ("\n\n", "---", "===", "___", "###", "##"):
             if sep in after:
                 after = after.split(sep)[0]

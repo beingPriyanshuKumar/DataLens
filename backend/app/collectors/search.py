@@ -86,9 +86,7 @@ async def _search_tavily(query: str, limit: int = 10) -> list[SearchResult]:
 # ---------------------------------------------------------------------------
 
 
-async def _search_ddg(
-    query: str, limit: int = 10, region: str | None = None
-) -> list[SearchResult]:
+async def _search_ddg(query: str, limit: int = 10, region: str | None = None) -> list[SearchResult]:
     """Search via DuckDuckGo (no API key required)."""
     import asyncio
 
@@ -148,9 +146,7 @@ async def _search_ddg(
 # ---------------------------------------------------------------------------
 
 
-async def search(
-    query: str, limit: int = 10, region: str | None = None
-) -> list[SearchResult]:
+async def search(query: str, limit: int = 10, region: str | None = None) -> list[SearchResult]:
     """Search using the configured provider."""
     provider = settings.get_search_provider()
     if provider == "tavily":

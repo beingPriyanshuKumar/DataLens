@@ -1,4 +1,3 @@
-import pytest
 from app.core.spec import enforce_required_fields
 from app.models import SourceStatus
 from app.processing.extractor import chunk_text

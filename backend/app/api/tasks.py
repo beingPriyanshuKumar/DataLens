@@ -15,13 +15,10 @@ from app.models import Record, RecordEvidence, Run, RunEvent, RunStatus, Source,
 from app.schemas import (
     CreateTaskRequest,
     LatestRunSummary,
-    Plan,
     PreviewRequest,
     PreviewResponse,
     TaskItem,
     TaskListResponse,
-    TaskSpec,
-    TaskSummary,
 )
 
 router = APIRouter(tags=["tasks"])
@@ -78,23 +75,17 @@ async def list_tasks(
     base_query = select(Task)
     if q and q.strip():
         pattern = f"%{q.strip()}%"
-        base_query = base_query.where(
-            or_(Task.prompt.ilike(pattern), Task.spec.ilike(pattern))
-        )
+        base_query = base_query.where(or_(Task.prompt.ilike(pattern), Task.spec.ilike(pattern)))
 
     if sort == "updated_at":
         order_col = Task.updated_at.desc() if order.lower() == "desc" else Task.updated_at.asc()
     else:
         order_col = Task.created_at.desc() if order.lower() == "desc" else Task.created_at.asc()
 
-    total_result = await session.execute(
-        select(func.count()).select_from(base_query.subquery())
-    )
+    total_result = await session.execute(select(func.count()).select_from(base_query.subquery()))
     total = total_result.scalar() or 0
 
-    tasks_result = await session.execute(
-        base_query.order_by(order_col).offset(offset).limit(limit)
-    )
+    tasks_result = await session.execute(base_query.order_by(order_col).offset(offset).limit(limit))
     tasks = tasks_result.scalars().all()
 
     items: list[TaskItem] = []
@@ -142,9 +133,12 @@ async def list_tasks(
                 )
             )
 
-        if status and status.lower() != "all":
-            if not latest_run or latest_run.status.value.lower() != status.lower():
-                continue
+        if (
+            status
+            and status.lower() != "all"
+            and (not latest_run or latest_run.status.value.lower() != status.lower())
+        ):
+            continue
 
         items.append(
             TaskItem(

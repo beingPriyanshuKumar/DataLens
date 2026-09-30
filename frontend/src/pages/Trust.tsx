@@ -156,7 +156,7 @@ export default function Trust() {
             </div>
             <div className="trust-policy-item">
               <span className="trust-policy-item__k font-mono">SSRF Prevention</span>
-              <span className="trust-policy-item__v">127.0.0.1, 10.0.0.0/8, 169.254.0.0/16 blocked</span>
+              <span className="trust-policy-item__v">Loopback, private subnets (RFC 1918), and link-local blocked</span>
             </div>
           </div>
 

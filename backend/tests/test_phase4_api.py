@@ -1,7 +1,7 @@
-import pytest
 import httpx
+import pytest
+
 from app.main import app
-from app.regions import SUPPORTED_REGIONS
 
 
 @pytest.mark.asyncio
@@ -54,11 +54,12 @@ async def test_security_headers_present():
 @pytest.mark.asyncio
 async def test_spoofed_x_forwarded_for_ignored():
     """VULN-003 / F-06: Untrusted X-Forwarded-For header is ignored by rate limiter."""
-    from app.core.rate_limit import APIRateLimiter
     from fastapi import Request
 
+    from app.core.rate_limit import APIRateLimiter
+
     limiter = APIRateLimiter(requests_per_minute=5)
-    
+
     # Mock request from untrusted client host
     scope = {
         "type": "http",

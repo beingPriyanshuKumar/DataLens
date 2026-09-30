@@ -138,7 +138,11 @@ async def test_task_lifecycle_and_records(async_session=None):
         resp = await client.get("/api/tasks")
         assert resp.status_code == 200
         tasks_data = resp.json()
-        tasks = tasks_data["items"] if isinstance(tasks_data, dict) and "items" in tasks_data else tasks_data
+        tasks = (
+            tasks_data["items"]
+            if isinstance(tasks_data, dict) and "items" in tasks_data
+            else tasks_data
+        )
         assert any(t["id"] == task_id for t in tasks)
 
         # 3. Get task

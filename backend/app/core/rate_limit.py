@@ -100,11 +100,9 @@ class APIRateLimiter:
 
     def _extract_ip(self, request: Request) -> str:
         """Extract client IP, inspecting proxy headers ONLY if request comes from a trusted proxy."""
-        client_host = request.client.host if request.client else "127.0.0.1"
+        client_host = request.client.host if request.client else "unknown"
         trusted = [
-            p.strip()
-            for p in getattr(settings, "trusted_proxies", "").split(",")
-            if p.strip()
+            p.strip() for p in getattr(settings, "trusted_proxies", "").split(",") if p.strip()
         ]
         if trusted and client_host in trusted:
             forwarded = request.headers.get("x-forwarded-for")

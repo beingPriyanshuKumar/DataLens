@@ -59,9 +59,7 @@ CHUNK_OVERLAP = 500
 MAX_CHUNKS_PER_PAGE = 4
 
 
-def chunk_text(
-    text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP
-) -> list[str]:
+def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
     """Split long text into overlapping chunks, bounded by max chunks per page."""
     if len(text) <= chunk_size:
         return [text]

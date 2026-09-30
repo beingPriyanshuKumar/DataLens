@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
-from app.regions import Region, SUPPORTED_REGIONS
+
+from app.regions import SUPPORTED_REGIONS, Region
 
 router = APIRouter(tags=["regions"])
 
