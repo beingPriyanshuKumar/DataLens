@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.collectors.fetcher import FetchError, fetch_page
 from app.collectors.policy import clear_robots_cache, is_allowed
 from app.collectors.search import search_multiple
+from app.config import settings
 from app.core.events import emit
 from app.db import async_session
 from app.models import (
@@ -157,6 +158,16 @@ def _build_dataset(
     return deduped
 
 
+_run_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_run_semaphore() -> asyncio.Semaphore:
+    global _run_semaphore
+    if _run_semaphore is None:
+        _run_semaphore = asyncio.Semaphore(settings.max_concurrent_runs)
+    return _run_semaphore
+
+
 async def execute_run(run_id: str) -> None:
     """Execute the full pipeline for a run with live streaming of results."""
     clear_robots_cache()
@@ -169,43 +180,55 @@ async def execute_run(run_id: str) -> None:
             await emit(run_id, EventLevel.INFO, "cancel", "Run cancelled before start")
             return
 
-        await _update_run(run_id, status=RunStatus.RUNNING, started_at=datetime.now(UTC))
-        await emit(run_id, EventLevel.INFO, "start", "Run started")
+        # Acquire concurrency slot (PERF-001 / F-04)
+        await emit(run_id, EventLevel.INFO, "queue", "Queued: waiting for a free slot")
+        sem = _get_run_semaphore()
 
-        # Load run and task details, snapshot the spec
-        async with async_session() as session:
-            from app.models import Task
-
-            run = await _get_run(session, run_id)
-            if run is None:
+        async with sem:
+            if await _is_cancelled(run_id):
+                await _update_run(run_id, status=RunStatus.CANCELLED, finished_at=datetime.now(UTC))
+                await emit(run_id, EventLevel.INFO, "cancel", "Run cancelled before start")
                 return
-            result = await session.execute(select(Task).where(Task.id == run.task_id))
-            task = result.scalar_one_or_none()
-            if task is None:
-                await _update_run(run_id, status=RunStatus.FAILED, error="Task not found")
-                return
-            spec = TaskSpec.model_validate_json(task.spec)
-            plan = Plan.model_validate_json(run.plan)
 
-        # Snapshot the spec on the run for column stability
-        await _update_run(run_id, run_spec=spec.model_dump_json())
+            await _update_run(run_id, status=RunStatus.RUNNING, started_at=datetime.now(UTC))
+            await emit(run_id, EventLevel.INFO, "start", "Run started")
 
-        pipeline_stats: dict = {
-            "raw_count": 0,
-            "verified_count": 0,
-            "valid_count": 0,
-            "deduped_count": 0,
-            "pages_fetched": 0,
-            "pages_failed": 0,
-            "hallucinated_count": 0,
-            "fields_nulled": 0,
-            "dropped_reasons": {},
-        }
+            # Load run and task details, snapshot the spec
+            async with async_session() as session:
+                from app.models import Task
 
-        # Step 1: Search
-        await emit(run_id, EventLevel.INFO, "search", f"Searching with {len(plan.queries)} queries")
-        search_results = await search_multiple(plan.queries, limit_per_query=10)
-        await emit(run_id, EventLevel.INFO, "search", f"Found {len(search_results)} candidate URLs")
+                run = await _get_run(session, run_id)
+                if run is None:
+                    return
+                result = await session.execute(select(Task).where(Task.id == run.task_id))
+                task = result.scalar_one_or_none()
+                if task is None:
+                    await _update_run(run_id, status=RunStatus.FAILED, error="Task not found")
+                    return
+                spec = TaskSpec.model_validate_json(task.spec)
+                plan = Plan.model_validate_json(run.plan)
+
+            # Snapshot the spec on the run for column stability
+            await _update_run(run_id, run_spec=spec.model_dump_json())
+
+            pipeline_stats: dict = {
+                "raw_count": 0,
+                "verified_count": 0,
+                "valid_count": 0,
+                "deduped_count": 0,
+                "pages_fetched": 0,
+                "pages_failed": 0,
+                "hallucinated_count": 0,
+                "fields_nulled": 0,
+                "dropped_reasons": {},
+            }
+
+            # Step 1: Search
+            await emit(run_id, EventLevel.INFO, "search", f"Searching with {len(plan.queries)} queries")
+            search_results = await search_multiple(
+                plan.queries, limit_per_query=10, region=spec.region
+            )
+            await emit(run_id, EventLevel.INFO, "search", f"Found {len(search_results)} candidate URLs")
 
         if await _is_cancelled(run_id):
             await _update_run(run_id, status=RunStatus.CANCELLED, finished_at=datetime.now(UTC))
@@ -429,7 +452,9 @@ async def execute_run(run_id: str) -> None:
                         f"top {spec.entity} database roundup",
                         f"best {spec.entity} roundup",
                     ]
-                    wave2_results = await search_multiple(wave2_queries, limit_per_query=8)
+                    wave2_results = await search_multiple(
+                        wave2_queries, limit_per_query=8, region=spec.region
+                    )
                     new_candidates = [r for r in wave2_results if r.url not in seen_urls]
                     for r in new_candidates:
                         seen_urls.add(r.url)

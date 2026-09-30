@@ -21,8 +21,17 @@ Set max_pages based on the target_count (roughly 2x target_count, capped at the 
 
 async def build_plan(spec: TaskSpec) -> Plan:
     """Generate a collection plan with search queries and steps from a TaskSpec."""
+    from app.regions import get_region
+
+    region = get_region(spec.region)
+    if region.code != "GLOBAL":
+        region_assumption = f"Region: {region.name}"
+        if region_assumption not in spec.assumptions:
+            spec.assumptions.append(region_assumption)
+
     spec_summary = (
         f"Entity: {spec.entity}\n"
+        f"Region: {region.name} ({region.code})\n"
         f"Fields: {', '.join(f.name for f in spec.fields)}\n"
         f"Key fields: {', '.join(spec.key_fields)}\n"
         f"Filters: {spec.filters}\n"

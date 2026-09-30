@@ -99,17 +99,23 @@ class APIRateLimiter:
         self._last_prune: float = time.monotonic()
 
     def _extract_ip(self, request: Request) -> str:
-        """Extract client IP, inspecting proxy headers if present."""
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            # First IP in comma-separated list is the original client
-            client = forwarded.split(",")[0].strip()
-            if client:
-                return client
-        real_ip = request.headers.get("x-real-ip")
-        if real_ip and real_ip.strip():
-            return real_ip.strip()
-        return request.client.host if request.client else "127.0.0.1"
+        """Extract client IP, inspecting proxy headers ONLY if request comes from a trusted proxy."""
+        client_host = request.client.host if request.client else "127.0.0.1"
+        trusted = [
+            p.strip()
+            for p in getattr(settings, "trusted_proxies", "").split(",")
+            if p.strip()
+        ]
+        if trusted and client_host in trusted:
+            forwarded = request.headers.get("x-forwarded-for")
+            if forwarded:
+                client = forwarded.split(",")[0].strip()
+                if client:
+                    return client
+            real_ip = request.headers.get("x-real-ip")
+            if real_ip and real_ip.strip():
+                return real_ip.strip()
+        return client_host
 
     def _prune_expired(self, cutoff: float) -> None:
         """Evict stale IP entries to prevent monotonically growing memory leaks."""

@@ -28,9 +28,17 @@ class TaskSpec(BaseModel):
     filters: dict[str, str] = Field(default_factory=dict)
     key_fields: list[str]
     target_count: int = 30
+    region: str = "GLOBAL"
     source_hints: list[str] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
     clarification: str | None = None
+
+    @field_validator("region", mode="before")
+    @classmethod
+    def validate_region(cls, v: Any) -> str:
+        from app.regions import validate_region_code
+
+        return validate_region_code(str(v) if v else "GLOBAL")
 
     @field_validator("filters", mode="before")
     @classmethod
@@ -71,6 +79,7 @@ class Plan(BaseModel):
 
 class PreviewRequest(BaseModel):
     prompt: str
+    region: str = "GLOBAL"
 
 
 class PreviewResponse(BaseModel):
@@ -82,6 +91,41 @@ class CreateTaskRequest(BaseModel):
     prompt: str
     spec: TaskSpec
     plan: Plan
+
+
+class LatestRunSummary(BaseModel):
+    id: str
+    status: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    record_count: int = 0
+    error: str | None = None
+
+
+class TaskItem(BaseModel):
+    id: str
+    title: str
+    prompt: str
+    region: str
+    created_at: str
+    run_count: int
+    latest_run: LatestRunSummary | None = None
+
+
+class TaskListResponse(BaseModel):
+    items: list[TaskItem]
+    total: int
+
+
+class PolicyResponse(BaseModel):
+    user_agent: str
+    honors_robots_txt: bool
+    blocked_categories: list[str]
+    blocked_domains: list[str]
+    per_domain_delay_seconds: float
+    max_pages_per_run: int
+    max_response_bytes: int
+    max_concurrent_runs: int
 
 
 class TaskSummary(BaseModel):

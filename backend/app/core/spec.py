@@ -27,11 +27,23 @@ def enforce_required_fields(spec: TaskSpec) -> TaskSpec:
     return spec
 
 
-async def parse_prompt(prompt: str) -> TaskSpec:
+async def parse_prompt(prompt: str, region_code: str = "GLOBAL") -> TaskSpec:
     """Convert a natural-language prompt into a structured TaskSpec."""
+    from app.regions import get_region
+
+    region = get_region(region_code)
+    user_prompt = prompt
+    if region.code != "GLOBAL":
+        user_prompt += (
+            f"\n\nContext Hint: Target search region is '{region.name}'. "
+            f"Prefer currency hint '{region.currency_hint}' and language hint '{region.language_hint}' "
+            "when not explicitly specified by user."
+        )
+
     spec = await generate_structured(
         system=SPEC_SYSTEM_PROMPT,
-        user=prompt,
+        user=user_prompt,
         output_model=TaskSpec,
     )
+    spec.region = region.code
     return enforce_required_fields(spec)
