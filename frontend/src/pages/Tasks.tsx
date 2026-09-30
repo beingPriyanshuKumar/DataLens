@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Header from "../components/Header";
@@ -223,8 +223,8 @@ export default function Tasks() {
                     const isExporting = exportDropdownId === task.id;
 
                     return (
-                      <>
-                        <tr key={task.id} className={isExpanded ? "tasks-row--expanded" : ""}>
+                      <Fragment key={task.id}>
+                        <tr className={isExpanded ? "tasks-row--expanded" : ""}>
                           <td>
                             <div className="task-cell-main">
                               <span
@@ -402,7 +402,7 @@ export default function Tasks() {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </tbody>
