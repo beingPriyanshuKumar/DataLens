@@ -181,44 +181,70 @@ npm run build
 
 ---
 
-## 🔒 Security & Code Quality Audit
+## 🧭 Five-Tab Editorial User Interface
 
-DataLens was subjected to a comprehensive architecture, security, and concurrency audit documented in [audit_report.md](file:///e:/PROJECTS/codecubicle/audit_report.md). All 16 identified vulnerabilities have been remediated:
+The DataLens frontend is designed around a clean, light editorial grid (`#B9C4C1` backdrop, crisp ink hairlines, Space Grotesk / Inter / IBM Plex Mono typography) organized into five dedicated tabs:
 
-| Category | Highlights & Remediated Items |
-|---|---|
-| **Security & SSRF** | Manual 3-hop redirect inspection ensuring all redirect destinations re-verify against `is_allowed()`. Complete IPv4/IPv6 private IP filtering using DNS address info resolution. Strict prompt injection boundary tags (`<UNTRUSTED_PAGE_DATA>`). Spreadsheet formula injection protection against leading whitespace/tab evasion (`=`, `+`, `-`, `@`, `%`, `\t`). |
-| **Data Integrity** | SQLite `PRAGMA foreign_keys = ON;` enforced on all connections. Declared SQLModel `Relationship(cascade="all, delete-orphan")` across all entities, fixing non-deterministic flush order and cascading task deletes. Safe fallback in deduplication logic when `key_fields` is empty to prevent dataset collapse. |
-| **Performance & Scalability** | Eliminated N+1 query loops in records and exports with batch `IN (...)` queries. Fixed SQLite write lock contention with `busy_timeout = 30000`. Chunked streaming CSV export preventing unbounded in-memory string buffering. |
-| **Streaming & UX** | Resilient SSE connection management in `useRunEvents` with exponential backoff reconnects and cursor preservation. Elimination of infinite server polling loops on missing runs. Global React `ErrorBoundary` and client-side table pagination. |
-| **Code Cleanliness** | 100% compliant with `ruff check` and `ruff format`. Builtin `TimeoutError` exception handling and typing across all modules. |
+1. **HOME (`/`):** Core value proposition, live platform counters from `/api/stats`, clickable starter prompt cards, and quick workflow explanation.
+2. **COLLECT (`/collect`, `/collect/:taskId`):** The primary 4-stage stepper:
+   - **01 Describe:** Natural language prompt textarea and **Search Region** selector (`Worldwide`, `India`, `United States`, `United Kingdom`, `Canada`, `Australia`, `Singapore`, `UAE`, `Germany`, `France`, etc.).
+   - **02 Review Plan:** Editable schema field definitions, generated queries, filters, and target limits.
+   - **03 Run & Monitor:** Live stage checklist, funnel analytics (`Raw -> Verified -> Valid -> Deduped`), progress indicators, real-time event logs, and early row preview.
+   - **04 Results & Export:** Interactive data grid, full evidence inspection drawer, Sources audit tab, execution run history, and trust metrics.
+3. **TASKS (`/tasks`):** Historical task log with real-time status filtering (`RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED`), prompt search, lazy-loaded run history, re-run execution, and per-task data deletion with foreign-key cascade.
+4. **GUIDE (`/guide`):** Step-by-step usage guide, prompt engineering cookbook, region selection mechanics, and troubleshooting FAQ.
+5. **TRUST (`/trust`):** Complete crawling policy disclosure (robots.txt, domain restrictions, rate pacing), verbatim quote verification mechanics, live system diagnostics (backend, database, search status), and honest platform limitations.
+
+---
+
+## Optional Runtime Configuration & Parameters
+
+DataLens can be customized via standard process environment variables without modifying source code:
+
+| Setting | Default | Description |
+|---|:---:|---|
+| `MAX_CONCURRENT_RUNS` | `2` | Global concurrency semaphore for active pipeline tasks. Additional runs queue gracefully until a slot is available. |
+| `TRUSTED_PROXIES` | `""` | Comma-separated list of reverse proxy IP addresses. Only requests originating from these hosts have their `X-Forwarded-For` header parsed for rate limiting. |
+| `MAX_PAGES_PER_RUN` | `8` | Maximum web pages crawled per pipeline run (can be overridden per-command, e.g. `MAX_PAGES_PER_RUN=30`). |
+| `DATABASE_URL` | `sqlite:///./datalens.db` | SQLAlchemy database connection string (SQLite WAL mode by default). |
+| `API_RATE_LIMIT_PER_MINUTE` | `60` | IP-based request throttling rate limit on API endpoints. |
+
+---
+
+## 🛡️ Deployment & Security Headers Note
+
+The DataLens backend middleware injects standard security headers on all responses:
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` (on API JSON responses)
+
+**Reverse Proxy Note:** When hosting the frontend client in a production cloud environment behind an HTTPS reverse proxy (e.g. Nginx, Caddy, or Cloudflare), enable HTTP Strict Transport Security (HSTS):
+```text
+Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+```
 
 ---
 
 ## 💡 Example Natural Language Prompts
 
-Try these prompts in the DataLens dashboard:
+Try these benchmark prompts in the DataLens dashboard:
 
-1. **Venture Capital & Startups:**
-   > *"Find 20 AI and developer tools startups that raised Seed or Series A funding in 2025 or 2026, including their founders, round amount, and headquarters."*
-2. **Talent & Hiring Intelligence:**
-   > *"List 15 remote Staff and Principal AI Engineer job openings posted this month, including company, salary range, and primary tech stack."*
-3. **Ecosystem & Hackathons:**
-   > *"Find companies that sponsored developer hackathons in 2025 or 2026 with their developer relations links and sponsored prize categories."*
-4. **Academic Research:**
-   > *"Extract 10 recent research papers on speculative decoding and LLM inference optimization, including author names, institutions, and benchmark speedups."*
+1. **Machine Learning Jobs:**
+   > *"Find 15 remote machine learning engineer jobs with salary ranges, companies, and requirements"*
+2. **Indian SaaS Startup Seed Funding:**
+   > *"Find 10 Indian SaaS startups that raised seed funding in 2025 with investor names and round size"*
+3. **Developer Hackathon Sponsors:**
+   > *"Find companies that sponsored developer hackathons in 2025 or 2026 with their developer relations links and sponsored prize categories"*
 
 ---
 
-## 📊 Explainable Confidence Formula
+## ⚠️ Known Limitations
 
-Each extracted record is evaluated across three transparent factors:
-
-$$\text{Confidence} = 0.5 \times \text{Completeness} + 0.3 \times \text{Corroboration} + 0.2 \times \text{Cleanliness}$$
-
-- **Completeness ($50\%$):** Ratio of populated, non-null fields against the required schema specification.
-- **Corroboration ($30\%$):** Boosts score when multiple independent web domains confirm the identical entity deduplication key.
-- **Cleanliness ($20\%$):** Penalizes formatting anomalies, syntax errors, or schema type conversion warnings.
+- **JavaScript-Rendered Single-Page Apps:** Static HTTP fetching targets pre-rendered HTML. When sites render entirely client-side via JavaScript without SSR, DataLens falls back to search provider text snippets for policy-compliant URLs.
+- **Search Provider Index Dependency:** Web coverage depends on what public search engines have indexed.
+- **Region Bias vs Hard Geofencing:** Selecting a search region (e.g. India or Germany) injects localized terms and country parameters into search queries, but does not guarantee every returned global source originates strictly from that boundary.
+- **Local Single-Operator Context:** The local demo build is unauthenticated for rapid hackathon judging. Public internet deployments require adding an access gateway or API authentication middleware (noted under audit finding `VULN-002`).
 
 ---
 
@@ -226,26 +252,34 @@ $$\text{Confidence} = 0.5 \times \text{Completeness} + 0.3 \times \text{Corrobor
 
 ```text
 codecubicle/
-├── audit_report.md           # In-depth architectural & security audit report
-├── report.md                 # Project implementation & evaluation report
+├── LICENSE                   # Open source MIT license
+├── README.md                 # Setup, architecture, and usage documentation
+├── docs/
+│   ├── AUDIT_REPORT.md       # Comprehensive codebase security & concurrency audit
+│   ├── COMPLIANCE_REPORT.md  # Problem statement compliance and verification report
+│   ├── CHANGE_REPORT.md      # Summary of audit fixes, yield enhancements, and verification
+│   └── screenshots/          # Curated full-page 1440px and responsive screenshots
 ├── backend/
 │   ├── app/
-│   │   ├── api/              # FastAPI endpoints (tasks, runs, records, exports, stats, diagnostics)
-│   │   ├── collectors/       # Search providers, httpx fetcher, and ethical policy gate
-│   │   ├── core/             # Spec parser, planner, pipeline runner, LLM client, rate limiter
-│   │   ├── processing/       # Trafilatura cleaner, extractor, normalizer, validator, deduper, verifier
+│   │   ├── api/              # FastAPI endpoints (tasks, runs, records, exports, regions, policy)
+│   │   ├── collectors/       # Search providers, streaming httpx fetcher, and SSRF policy gate
+│   │   ├── core/             # Spec parser, planner, pipeline runner, rate limiter, semaphore
+│   │   ├── processing/       # Trafilatura cleaner, extractor, normalizer, verifier, deduper
 │   │   ├── config.py         # Settings & environment variable configuration
-│   │   ├── db.py             # Async SQLite engine, foreign keys listener, and migrations
-│   │   ├── models.py         # SQLModel database tables & ORM relationships
-│   │   └── schemas.py        # Pydantic data interchange models
-│   └── tests/                # 55 unit and integration tests (pytest)
+│   │   ├── db.py             # SQLite WAL engine with foreign key enforcement
+│   │   ├── models.py         # SQLModel database tables & cascading relationships
+│   │   ├── regions.py        # Supported search regions registry
+│   │   └── schemas.py        # Pydantic data interchange models & filter coercion
+│   └── tests/                # 69 unit and integration tests (pytest)
 └── frontend/
     ├── src/
-    │   ├── components/       # UI components (DataTable, ErrorBoundary, PlanEditor, Drawer, etc.)
-    │   ├── hooks/            # useRunEvents hook with resilient exponential backoff
-    │   ├── pages/            # Home dashboard and TaskDetail view
-    │   ├── styles/           # Design system tokens and base styles
-    │   └── types.ts          # TypeScript interfaces
+    │   ├── components/       # Editorial UI components (DataTable, Drawer, PlanEditor, etc.)
+    │   ├── content/          # Guide and documentation content
+    │   ├── hooks/            # useRunEvents hook with resilient backoff
+    │   ├── pages/            # 5 Tab Pages: Home, Collect, Tasks, Guide, Trust
+    │   ├── styles/           # Design system tokens, layout, and reset styles
+    │   ├── types/            # TypeScript schemas and models
+    │   └── utils/            # URL safety helpers (safeHref) and unit tests
     └── vite.config.ts        # Vite configuration & dev proxy
 ```
 
@@ -253,4 +287,4 @@ codecubicle/
 
 ## 📜 License
 
-Distributed under the MIT License. Built for Geek Room Problem Statement 01.
+Distributed under the MIT License. Copyright (c) 2026 Team CodeCubicle. Built for Problem Statement 01.
