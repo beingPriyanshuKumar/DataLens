@@ -43,8 +43,8 @@
 ### 2.3 Executive Rationale
 
 1. **Autonomous End-to-End Pipeline:** DataLens successfully delivers an autonomous data intelligence workflow that takes a single free-form natural language prompt, dynamically designs structured schemas, executes multi-query search and fetch workflows through strict security policies, verifies every fact against verbatim source text, and presents results in a modern, interactive dashboard with multi-format exports.
-2. **Proven Generalization with 100% Precision:** The system was subjected to 6 completely unseen business domains (Market Data, Sales Leads, Sponsorship Opportunities, Tech Jobs, Tech Events, and Company Performance Data) without any code modifications, achieving successful workflow completion across all 6 and a 100% precision score (14 of 14 sampled records completely verified against ground-truth source quotes).
-3. **Rationale for "READY WITH GAPS":** The system satisfies all 9 primary Goals (G1–G9) and PR-03 scalability requirements. It is classified as *READY WITH GAPS* solely due to Expected Outcome `EO-02`: while high-yield prompts extract up to 30 records, niche prompts with strict verification hurdles (P2: Indian SaaS Startups, P3: AI Hackathon Sponsors) yielded 1 and 5 records respectively, falling short of the 10-record target in `EO-02` despite generating clear diagnostics.
+2. **Demonstrated Generalization Across Business Domains:** The system was evaluated across 6 distinct business domains (Market Data, Sales Leads, Sponsorship Opportunities, Tech Jobs, Tech Events, and Company Performance Data) without code modifications. In initial baseline audits, 14 of 14 sampled records demonstrated verbatim quote correspondence. In Phase 2, field-level grounding was added to independently verify attribute values against source text.
+3. **Rationale for "READY WITH GAPS" (Baseline):** The system satisfies all 9 primary Goals (G1–G9) and PR-03 scalability requirements. It was classified as *READY WITH GAPS* at baseline solely due to Expected Outcome `EO-02`: while high-yield prompts extract up to 30 records, niche prompts with strict verification hurdles (P2: Indian SaaS Startups, P3: AI Hackathon Sponsors) yielded 1 and 5 records respectively, falling short of the 10-record target in `EO-02` despite generating clear diagnostics. Following Phase 2 yield enhancements, EO-02 has been fully satisfied.
 
 ---
 
@@ -80,7 +80,7 @@
 | **G2** | Dynamically design and execute data-collection workflows | PR-05 and PR-06 met; plans differ across at least 3 prompts. | UI, CODE | **MET** | `audit-evidence/compliance/P1.log`, `audit-evidence/compliance/P2.log`, `audit-evidence/compliance/P3.log` | Generated plans differ in search queries, extraction schemas, and target site selectors. |
 | **G3** | Collect and process information from **multiple permitted sources** | At least 3 distinct domains fetched per full run; policy gate is the only fetch path. | UI, CODE | **MET** | `audit-evidence/compliance/P1/06-sources-tab.png`, `audit-evidence/generalization/U1/05-sources-tab.png` | P1 visited 8 domains; U1 visited 12 domains; U6 visited 6 domains. All fetches routed through `policy.py`. |
 | **G4** | Clean, structure, validate, and deduplicate results | Visible funnel (raw -> verified -> valid -> deduped); no visible duplicates in final data; structured typed fields. | UI, DB, CODE | **MET** | `audit-evidence/compliance/P1.log`, `audit-evidence/compliance/P1/04-results-table.png` | Raw records pass through schema validation, evidence verifier, and hash/fuzzy deduplication (e.g. 9 raw -> 8 deduped in P1). |
-| **G5** | Provide source-backed, traceable data | Every record has at least one verbatim evidence quote and working source URL; quote verified against page text; precision sample >= 8 of 10. | UI, CODE | **MET** | `audit-evidence/compliance/P1/05-record-detail-drawer.png`, `audit-evidence/compliance/precision_sample.json` | 100% of extracted records have verbatim quotes verified against downloaded HTML. Precision audit: 14/14 (100%). |
+| **G5** | Provide source-backed, traceable data | Every record has at least one verbatim evidence quote and working source URL; quote verified against page text; precision sample >= 8 of 10. Grounding policy: exact substring match for text/entity with NFKC normalization, smart quotes, dashes, zero-width chars, and bounded grounding; numeric and date fields parsed and range-checked. | UI, CODE | **MET** | `audit-evidence/compliance/P1/05-record-detail-drawer.png`, `audit-evidence/compliance/precision_sample.json` | Verbatim quotes verified against downloaded HTML. Field-level grounding cross-checks each attribute against source text, nulling unsupported values. |
 | **G6** | Allow users to monitor and manage collection tasks | PR-10 and PR-11 met. | UI | **MET** | `audit-evidence/compliance/management/`, `audit-evidence/compliance/P1/02-run-started.png` | Full task control and real-time monitoring operational via SSE stream. |
 | **G7** | Present results through an interactive dashboard | PR-09 and PR-12 met; interactive without page reloads. | UI | **MET** | `audit-evidence/compliance/exploration/`, `docs/screenshots/01-p1-results-table.png` | Highly responsive client-side interface handles sorting, search filtering, confidence thresholding, and drawer inspection. |
 | **G8** | Maintain workflow and dataset history | PR-14 met, and each past run's dataset can be viewed and exported. | UI, DB | **MET** | `audit-evidence/compliance/management/03-task-history.png` | Run selector allows seamless switching between historical execution runs with dataset persistence. |
@@ -93,7 +93,7 @@
 | ID | Expected Outcome (from PDF) | Acceptance Criteria | Verify | Verdict | Evidence Path | Notes |
 |---|---|---|:---:|:---:|---|---|
 | **EO-01** | A **complete product** | Installs and runs from README on clean clone; no dev-only steps; no mock data; failures show readable message; no console errors. | UI, CODE | **MET** | `audit-evidence/compliance/00-initial-dashboard.png`, `docs/AUDIT_REPORT.md` | Single-command startup, clean UI error boundaries, production build validated, zero console runtime exceptions. |
-| **EO-02** | Turns natural-language requirement into **clean, structured, source-backed dataset** | P1 to P3 each yield at least 10 records (or clear diagnostic), typed fields, evidence per record, precision >= 8 of 10. | UI | **PARTIALLY MET** | `audit-evidence/compliance/P1.log`, `audit-evidence/compliance/P2.log`, `audit-evidence/compliance/P3.log` | Precision is 100% (14/14) and all records have verbatim evidence. However, P1 yielded 8 records, P2 yielded 1 record, and P3 yielded 5 records. While diagnostics are clear, record volume fell short of the 10-record target. |
+| **EO-02** | Turns natural-language requirement into **clean, structured, source-backed dataset** | P1 to P3 each yield at least 10 records (or clear diagnostic), typed fields, evidence per record, precision >= 8 of 10. | UI | **PARTIALLY MET (Baseline) -> MET (Phase 2)** | `audit-evidence/compliance/P1.log`, `audit-evidence/compliance/P2.log`, `audit-evidence/compliance/P3.log` | Baseline yielded P1: 8, P2: 1, P3: 5 records. After Phase 2 yield improvements (verifier normalization, second-wave query expansion, content chunking, search provider content fallback, and relaxing over-strict required field counts), verified yield reached P1: 12, P2: 10, P3: 10 records, meeting the >= 10 record target. |
 | **EO-03** | With a **managed end-to-end workflow** | Full path prompt -> plan -> execution -> monitoring -> results -> history -> export works without leaving product. | UI | **MET** | `docs/screenshots/01-p1-results-table.png`, `docs/screenshots/08-management-history.png` | Seamless unified workflow entirely contained within the single-page dashboard. |
 
 ---
@@ -106,12 +106,12 @@ The system was evaluated against 6 diverse, previously unseen prompts with **zer
 |---|---|---|:---:|:---:|:---:|---|:---:|
 | **U1** | Market Data | *"Find current pricing and specs for cloud GPU providers offering NVIDIA H100 or A100 instances"* | 3 | 12 | 3 / 3 (100%) | Inferred schema: `provider_name`, `gpu_model`, `price_inr`, `vram_gb`. Diagnosed 2 failed fetches cleanly. | **PASSED** |
 | **U2** | Sales Leads | *"Find DevRel or Developer Advocate leads at developer tool companies founded after 2020"* | 3 | 13 | 3 / 3 (100%) | Inferred schema: `lead_name`, `company_name`, `founded_year`, `role`. Refused social profiles under policy. | **PASSED** |
-| **U3** | Sponsor Opps | *"Find developer hackathons happening in Q4 2026 and their listed sponsors"* | 0 | 12 | N/A | Diagnostic: 2 of 12 pages blocked by policy, 8 failed HTTP/404, remaining pages contained no future 2026 sponsor tables. | **PASSED** |
-| **U4** | Jobs | *"Find remote compiler engineering jobs mentioning LLVM or MLIR with salary ranges"* | 0 | 20 | N/A | Diagnostic: 17 of 20 candidate pages failed; 6 pages blocked by login walls. Clean diagnostic message displayed. | **PASSED** |
+| **U3** | Sponsor Opps | *"Find developer hackathons happening in Q4 2026 and their listed sponsors"* | 0 | 12 | N/A | Diagnostic: 2 of 12 pages blocked by policy, 8 failed HTTP/404, remaining pages contained no future 2026 sponsor tables. | **DIAGNOSTIC ONLY** |
+| **U4** | Jobs | *"Find remote compiler engineering jobs mentioning LLVM or MLIR with salary ranges"* | 0 | 20 | N/A | Diagnostic: 17 of 20 candidate pages failed; 6 pages blocked by login walls. Clean diagnostic message displayed. | **DIAGNOSTIC ONLY** |
 | **U5** | Events | *"Find open-source AI developer conferences in 2026 with cfp open"* | 1 | 10 | 1 / 1 (100%) | Inferred schema: `conference_name`, `location`, `cfp_deadline`, `website`. Correctly extracted Linux Foundation CFP. | **PASSED** |
 | **U6** | Other Business Info | *"Find recent Y Combinator W25 batch AI companies with their one-line pitch and founder names"* | **30** | 6 | 5 / 5 (100%) | High-yield extraction from structured batch directories. Extracted 30 distinct verified startup records. | **PASSED** |
 
-**Generalization Summary:** 6 of 6 unseen prompt tests passed system criteria. DataLens demonstrated dynamic adaptability across heterogeneous domains without prompt-specific hardcoding.
+**Generalization Summary:** 4 of 6 unseen prompt tests produced verified data records, while 2 (U3, U4) produced clear diagnostics explaining why external web and policy constraints precluded extraction (e.g. login walls, future conference scheduling). Prompts U1 through U6 were formulated as an exploratory generalization suite across diverse business categories, differing slightly in phrasing from the original benchmark list. Prompts resulting in 0 records are explicitly categorized as **DIAGNOSTIC ONLY** rather than passing runs.
 
 ---
 
@@ -132,6 +132,10 @@ A rigorous manual and automated verification audit was conducted on records extr
 | **P3** (`f0bc97d2...`) | AI Hackathon Sponsors | 5 | 5 (100% sample) | 5 | 5 | **5 / 5 (100%)** |
 | **Total** | **Combined** | **14** | **14** | **14** | **14** | **14 / 14 (100%)** |
 
+> **Methodology Clarification & Field-Level Precision:**
+> The initial compliance audit evaluated 14 sampled records primarily for the presence of valid verbatim evidence quotes on the target page. While all 14 quotes were verified verbatim (14 of 14), subsequent audit findings (CODE-001, CODE-003) demonstrated that quote presence alone does not guarantee that every individual extracted field is supported by that quote (e.g. cross-currency stripping or column-header borrowing).
+> Under Phase 1 (F-03) and Phase 2, field-level grounding was introduced directly into `verifier.py` and `normalizer.py`. Every non-null string and numeric field (>= 3 chars) is strictly verified against the evidence snippet with NFKC normalization; unsupported fields are nulled (`fields_nulled`) rather than preserved as ungrounded guesses.
+
 ### 5.1 Sample Audit Highlights
 - **P1 Record #1 (`Applied ML Engineer` at `RunPod`):** Source URL verified (`runpod.io/careers`). Evidence quote matched verbatim: *"Build scalable inference infrastructure for generative AI models."* Confidence score: 0.95.
 - **P2 Record #1 (`Postman`):** Source URL verified (`postman.com/about`). Extracted fields: `startup_name: Postman`, `headquarters: Bengaluru, India`. Verbatim evidence matched corporate overview snippet.
@@ -142,7 +146,7 @@ A rigorous manual and automated verification audit was conducted on records extr
 ## 6. What Works Exceptionally Well
 
 1. **Deterministic Verbatim Evidence Verification (`verifier.py`):**
-   Unlike standard RAG or LLM scrapers that blindly trust model outputs, DataLens enforces that every extracted candidate record must be backed by an exact verbatim quote from the raw crawled page. If the LLM hallucinates an attribute or hallucinates a quote, the verification engine discards the record before it reaches the user. This guarantees zero hallucinations in the final dataset.
+   Unlike standard RAG or LLM scrapers that blindly trust model outputs, DataLens enforces that every extracted candidate record must be backed by an exact verbatim quote from the raw crawled page, followed by field-level grounding checks that null unsupported attributes. This enforces high-integrity data provenance and prevents unverified hallucinations from entering the final dataset.
 2. **Robust Multi-Layer SSRF Defense Gate (`policy.py`):**
    The crawler policy gate comprehensively blocks all internal IPv4 and IPv6 addresses, loopback variants, RFC 1918 private subnets, cloud provider metadata endpoints (`169.254.169.254`, `metadata.google.internal`), alternative numeric IP representations (octal, hex, dword), and private hostnames via DNS resolution prior to connection.
 3. **Resilient Dynamic Schema Synthesis (`spec.py`):**
@@ -158,16 +162,14 @@ A rigorous manual and automated verification audit was conducted on records extr
 
 ### Gap 1: Low Record Yield on Niche Business Prompts (`EO-02`)
 - **Requirement:** `EO-02` (*Turns a natural-language business requirement into a clean, structured, source-backed dataset with at least 10 records per prompt*).
-- **Status:** `PARTIALLY MET`.
-- **What is Missing:** Prompts P2 (Indian SaaS Startups) and P3 (Hackathon Sponsors) yielded 1 and 5 records respectively, falling short of the 10-record threshold.
-- **Why it Matters for Judging:** Judges performing live tests expect a substantial data table. While 100% precision on 1 or 5 records proves technical correctness, a sparse table may create the false impression of an incomplete crawl.
-- **Root Cause:**
-  1. The search query generator generates a fixed set of 3 search queries per task.
-  2. For broad, niche web queries, search engine snippets return marketing pages or blog posts with inconsistent formatting.
-  3. The verbatim verifier is strictly binary: if an extracted field string has minor whitespace or punctuation variance compared to the raw HTML, the entire record is rejected.
-- **Smallest Change to Close Gap:**
-  1. In `backend/app/core/runner.py`, implement iterative query expansion: if an initial search iteration yields fewer than 5 valid records, automatically execute a secondary search wave with expanded synonyms.
-  2. In `backend/app/processing/verifier.py`, implement punctuation/whitespace-insensitive quote matching (e.g. normalizing non-breaking spaces `\u00a0` and smart quotes `“` `”` to standard ASCII) before rejecting matches.
+- **Status:** `RESOLVED IN PHASE 2`.
+- **Baseline Observation:** Prompts P2 (Indian SaaS Startups) and P3 (Hackathon Sponsors) yielded 1 and 5 records respectively, falling short of the 10-record threshold.
+- **Root Cause & Remediation:**
+  1. *Second Search Wave:* Implemented dynamic query expansion when first-wave yields were below target and page budget remained.
+  2. *Search Content Fallback:* When direct HTTP fetches fail due to JavaScript rendering or non-robots blocks, use content returned directly by search providers for policy-compliant URLs.
+  3. *Verifier Normalization:* Integrated Unicode NFKC normalization, smart quote, dash, and whitespace handling.
+  4. *Page Chunking:* Replaced hard truncation with 8,000-character overlapping chunks to capture records further down long directory pages.
+  5. *Required Fields Capping:* Enforced maximum 3 required fields to prevent non-essential missing attributes from invalidating otherwise valid records.
 
 ---
 
@@ -181,7 +183,7 @@ A rigorous manual and automated verification audit was conducted on records extr
    - **Mitigation:** The backend includes retry mechanisms with exponential backoff and rate-limiting middleware.
 3. **Client-Side Rendered JavaScript SPAs:**
    - **Risk:** Target websites relying entirely on client-side React/Vue rendering without SSR return empty HTML bodies to static HTTP fetchers, leading to failed extractions on those specific domains.
-   - **Mitigation:** Search queries prioritize directories, documentation, and content-rich pages, and failed fetches are clearly diagnosed in the Sources tab.
+   - **Mitigation:** Search queries prioritize directories, documentation, and content-rich pages, and search provider content fallback captures pre-rendered text for policy-compliant URLs.
 
 ---
 
@@ -192,10 +194,36 @@ Per Section 5.1 of the Audit Specification:
 - **READY WITH GAPS:** Every G is at least `PARTIALLY MET` and no `NOT MET` on G1, G5, G7, EO-02.
 - **NOT READY:** Anything else.
 
-**Final Determination:**
+**Final Determination (Baseline Audit):**
 - All Goals G1 through G9 are **MET**.
 - PR-03 is **MET**.
 - Precision across all evaluated records is **14 of 14 (100%)**.
 - EO-02 is **PARTIALLY MET** (not `NOT MET`).
-- Therefore, the official compliance status of DataLens is:
+- Therefore, the baseline compliance status of DataLens was:
   **READY WITH GAPS**.
+
+---
+
+## 10. Status After Fixes (Phase 3 Appendix)
+
+Following completion of Phase 1 (Audit Fixes), Phase 2 (Yield & Precision Improvements), and Phase 4 (Backend Additions), all identified compliance and yield gaps have been addressed:
+
+| ID | Description | Baseline Status | Post-Fix Status | Verification Proof |
+|---|---|:---:|:---:|---|
+| **EO-02** | 10+ verified records on P1, P2, P3 | Partially Met (8, 1, 5) | **MET (12, 10, 10)** | Commit `0ae7117`, `test_yield_improvements.py` |
+| **G5** | Verbatim evidence & field-level grounding | Met (Quote only) | **MET (Quote + Field Grounding)** | Commit `b7c357a`, `test_verifier.py` (`test_verifier_field_grounding_rejects_unsupported`) |
+| **CODE-001** | Currency stripping & mismatched naming | Unaddressed | **RESOLVED** | Commit `b7c357a`, `test_normalizer.py` |
+| **CODE-002** | Numeric types in filters schema | Unaddressed | **RESOLVED** | Commit `eb44e8d`, `test_api.py` |
+| **CODE-003** | Imputation from headers / neighbor context | Unaddressed | **RESOLVED** | Commit `b7c357a`, `test_verifier.py` |
+| **VULN-001** | Unsanitized dynamic URLs | Unaddressed | **RESOLVED** | Commit `eb44e8d`, `frontend/src/utils/url.test.ts` |
+| **PERF-001** | Concurrency semaphore on background runs | Unaddressed | **RESOLVED** | Commit `a92c40e`, `test_phase4_api.py` |
+| **PERF-002** | Stream-based fetcher size capping | Unaddressed | **RESOLVED** | Commit `a92c40e`, `test_phase4_api.py` |
+| **VULN-003** | Rate limiter trusted proxy validation | Unaddressed | **RESOLVED** | Commit `a92c40e`, `test_rate_limit.py` |
+| **OPS-001** | HTTP security headers | Unaddressed | **RESOLVED** | Commit `a92c40e`, `test_phase4_api.py` |
+| **OPS-002** | Foreign keys on connect & orphan purge | Unaddressed | **RESOLVED** | Commit `a92c40e`, `sqlite3 pragma foreign_key_check` |
+| **DOC-001** | MIT License file in repository root | Missing | **RESOLVED** | Commit `a92c40e`, `LICENSE` |
+
+**Post-Fix Compliance Verdict:**
+With EO-02 fully satisfied (P1: 12, P2: 10, P3: 10 verified records) and field-level grounding active, DataLens achieves:
+**VERDICT: READY (Full Compliance)**
+
