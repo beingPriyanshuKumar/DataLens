@@ -1,0 +1,59 @@
+.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  padding: var(--space-5);
+}
+
+.error-boundary__card {
+  max-width: 540px;
+  width: 100%;
+  background: var(--color-surface);
+  border: 2px solid var(--color-red);
+  padding: var(--space-5);
+  box-shadow: 4px 4px 0 var(--color-ink);
+}
+
+.error-boundary__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.error-boundary__title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-ink);
+  letter-spacing: -0.02em;
+}
+
+.error-boundary__desc {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--color-ink-muted);
+  line-height: 1.5;
+  margin-bottom: var(--space-4);
+}
+
+.error-boundary__details {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: #fef2f2;
+  border: 1px solid rgba(239, 62, 50, 0.3);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  color: #991b1b;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+}
+
+.error-boundary__actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}

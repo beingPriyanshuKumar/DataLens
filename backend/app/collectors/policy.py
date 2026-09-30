@@ -45,11 +45,38 @@ _robots_cache: dict[str, RobotFileParser | None] = {}
 
 
 def _is_private_ip(hostname: str) -> bool:
-    """Check if hostname resolves to a private, loopback, or link-local IP."""
+    """Check if hostname resolves to a private, loopback, link-local, or reserved IP (IPv4 & IPv6)."""
+    clean_host = hostname.strip("[]")
     try:
-        addr = socket.gethostbyname(hostname)
-        ip = ipaddress.ip_address(addr)
-        return ip.is_private or ip.is_loopback or ip.is_link_local
+        # Check if hostname is an IP literal
+        try:
+            ip = ipaddress.ip_address(clean_host)
+            return (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+                or ip.is_unspecified
+            )
+        except ValueError:
+            pass
+
+        # Resolve all addresses (both IPv4 and IPv6)
+        addr_info = socket.getaddrinfo(clean_host, None)
+        for _, _, _, _, sockaddr in addr_info:
+            ip_str = sockaddr[0]
+            ip = ipaddress.ip_address(ip_str)
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+                or ip.is_unspecified
+            ):
+                return True
+        return False
     except (socket.gaierror, ValueError):
         return True
 

@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import UTC, datetime
 
-from sqlmodel import Column, Enum, Field, SQLModel, Text
+from sqlmodel import Column, Enum, Field, Relationship, SQLModel, Text
 
 
 def _uuid() -> str:
@@ -45,6 +45,11 @@ class Task(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 
+    runs: list["Run"] = Relationship(
+        back_populates="task",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+
 
 class Run(SQLModel, table=True):
     __tablename__ = "runs"
@@ -59,6 +64,20 @@ class Run(SQLModel, table=True):
     started_at: datetime | None = None
     finished_at: datetime | None = None
 
+    task: Task | None = Relationship(back_populates="runs")
+    events: list["RunEvent"] = Relationship(
+        back_populates="run",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    sources: list["Source"] = Relationship(
+        back_populates="run",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    records: list["Record"] = Relationship(
+        back_populates="run",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+
 
 class RunEvent(SQLModel, table=True):
     __tablename__ = "run_events"
@@ -70,6 +89,8 @@ class RunEvent(SQLModel, table=True):
     message: str = Field(sa_column=Column(Text))
     data: str | None = Field(default=None, sa_column=Column(Text))
     created_at: datetime = Field(default_factory=_now)
+
+    run: Run | None = Relationship(back_populates="events")
 
 
 class Source(SQLModel, table=True):
@@ -85,6 +106,12 @@ class Source(SQLModel, table=True):
     records_found: int = 0
     fetched_at: datetime = Field(default_factory=_now)
 
+    run: Run | None = Relationship(back_populates="sources")
+    evidence: list["RecordEvidence"] = Relationship(
+        back_populates="source",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+
 
 class Record(SQLModel, table=True):
     __tablename__ = "records"
@@ -97,6 +124,12 @@ class Record(SQLModel, table=True):
     flags: str = Field(default="[]", sa_column=Column(Text))
     created_at: datetime = Field(default_factory=_now)
 
+    run: Run | None = Relationship(back_populates="records")
+    evidence: list["RecordEvidence"] = Relationship(
+        back_populates="record",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+
 
 class RecordEvidence(SQLModel, table=True):
     __tablename__ = "record_evidence"
@@ -105,3 +138,6 @@ class RecordEvidence(SQLModel, table=True):
     record_id: str = Field(foreign_key="records.id", index=True)
     source_id: str = Field(foreign_key="sources.id")
     snippet: str = Field(sa_column=Column(Text))
+
+    record: Record | None = Relationship(back_populates="evidence")
+    source: Source | None = Relationship(back_populates="evidence")

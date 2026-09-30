@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.planner import build_plan
@@ -11,7 +11,7 @@ from app.core.rate_limit import api_limiter
 from app.core.runner import start_run
 from app.core.spec import parse_prompt
 from app.db import get_session
-from app.models import Record, Run, RunStatus, Task
+from app.models import Record, RecordEvidence, Run, RunEvent, RunStatus, Source, Task
 from app.schemas import (
     CreateTaskRequest,
     PreviewRequest,
@@ -145,9 +145,27 @@ async def delete_task(
         raise HTTPException(status_code=404, detail="Task not found")
 
     runs_result = await session.execute(select(Run).where(Run.task_id == task_id))
-    for run in runs_result.scalars().all():
-        await session.delete(run)
+    runs = runs_result.scalars().all()
+    run_ids = [r.id for r in runs]
 
+    if run_ids:
+        # 1. Delete associated evidence and records
+        records_result = await session.execute(select(Record.id).where(Record.run_id.in_(run_ids)))
+        record_ids = [r[0] for r in records_result.all()]
+        if record_ids:
+            await session.execute(
+                delete(RecordEvidence).where(RecordEvidence.record_id.in_(record_ids))
+            )
+            await session.execute(delete(Record).where(Record.id.in_(record_ids)))
+
+        # 2. Delete sources and run events
+        await session.execute(delete(Source).where(Source.run_id.in_(run_ids)))
+        await session.execute(delete(RunEvent).where(RunEvent.run_id.in_(run_ids)))
+
+        # 3. Delete runs
+        await session.execute(delete(Run).where(Run.id.in_(run_ids)))
+
+    # 4. Delete the task
     await session.delete(task)
     await session.commit()
     return {"deleted": True}

@@ -43,6 +43,8 @@ async def test_policy_private_ip():
         "http://192.168.1.1/dashboard",
         "http://10.0.0.1/secret",
         "http://169.254.169.254/latest/meta-data/",
+        "http://[::1]/status",
+        "http://[fe80::1]/config",
     ]
     for url in urls:
         decision = await is_allowed(url)

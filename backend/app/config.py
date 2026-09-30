@@ -91,8 +91,7 @@ logger.info(
 )
 if not _llm_key_present:
     logger.warning(
-        "No LLM API key configured for provider '%s'. "
-        "Set %s in backend/.env and restart.",
+        "No LLM API key configured for provider '%s'. Set %s in backend/.env and restart.",
         settings.llm_provider,
         "GEMINI_API_KEY" if settings.llm_provider == "gemini" else "ANTHROPIC_API_KEY",
     )

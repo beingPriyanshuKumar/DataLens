@@ -189,6 +189,25 @@ async def test_task_lifecycle_and_records(async_session=None):
         assert resp.status_code == 200
         assert resp.json() == {"deleted": True}
 
+        # Verify cascade: child run, source, record, and evidence are completely removed
+        from sqlmodel import select
+
+        async with session_factory() as session:
+            assert (
+                await session.execute(select(Run).where(Run.id == run_id))
+            ).scalar_one_or_none() is None
+            assert (
+                await session.execute(select(Source).where(Source.id == f"src-{u}"))
+            ).scalar_one_or_none() is None
+            assert (
+                await session.execute(select(Record).where(Record.id == f"rec-{u}"))
+            ).scalar_one_or_none() is None
+            assert (
+                await session.execute(
+                    select(RecordEvidence).where(RecordEvidence.record_id == f"rec-{u}")
+                )
+            ).scalar_one_or_none() is None
+
 
 @pytest.mark.asyncio
 async def test_stats_endpoint():

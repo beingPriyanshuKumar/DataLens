@@ -71,8 +71,24 @@ def deduplicate(
     - _evidence_list: list of all evidence snippets (from merged duplicates)
     - _source_ids: list of all source IDs (from merged duplicates)
     """
+    if not records:
+        return []
+
+    # Guard: if key_fields is empty, derive from all non-metadata record keys
+    effective_keys = list(key_fields)
+    if not effective_keys:
+        effective_keys = [k for k in records[0] if not k.startswith("_") and k != "evidence"]
+
+    # If still no keys, assign individual unique keys and return without collapsing
+    if not effective_keys:
+        for idx, r in enumerate(records):
+            r["_dedupe_key"] = f"record_{idx}"
+            r.setdefault("_evidence_list", [r.get("evidence", "")])
+            r.setdefault("_source_ids", [r.get("_source_id", "")])
+        return list(records)
+
     for r in records:
-        r["_dedupe_key"] = _build_dedupe_key(r, key_fields)
+        r["_dedupe_key"] = _build_dedupe_key(r, effective_keys)
         r.setdefault("_evidence_list", [r.get("evidence", "")])
         r.setdefault("_source_ids", [r.get("_source_id", "")])
 
@@ -98,16 +114,18 @@ def deduplicate(
     for i, r1 in enumerate(exact_deduped):
         if i in merged_indices:
             continue
-        key1 = _key_string(r1, key_fields)
-        for j in range(i + 1, len(exact_deduped)):
-            if j in merged_indices:
-                continue
-            key2 = _key_string(exact_deduped[j], key_fields)
-            if fuzz.token_sort_ratio(key1, key2) >= FUZZY_MERGE_THRESHOLD:
-                r1 = _merge_records(r1, exact_deduped[j])
-                r1["_evidence_list"].extend(exact_deduped[j].get("_evidence_list", []))
-                r1["_source_ids"].extend(exact_deduped[j].get("_source_ids", []))
-                merged_indices.add(j)
+        key1 = _key_string(r1, effective_keys)
+        # Only perform fuzzy comparison if key1 contains actual text
+        if key1.strip():
+            for j in range(i + 1, len(exact_deduped)):
+                if j in merged_indices:
+                    continue
+                key2 = _key_string(exact_deduped[j], effective_keys)
+                if key2.strip() and fuzz.token_sort_ratio(key1, key2) >= FUZZY_MERGE_THRESHOLD:
+                    r1 = _merge_records(r1, exact_deduped[j])
+                    r1["_evidence_list"].extend(exact_deduped[j].get("_evidence_list", []))
+                    r1["_source_ids"].extend(exact_deduped[j].get("_source_ids", []))
+                    merged_indices.add(j)
         result.append(r1)
 
     return result

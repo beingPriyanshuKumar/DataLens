@@ -87,20 +87,23 @@ async def get_record(
     evidence_rows = evidence_result.scalars().all()
 
     evidence_details: list[EvidenceDetail] = []
-    for ev in evidence_rows:
-        source_url = None
-        source_result = await session.execute(select(Source).where(Source.id == ev.source_id))
-        source = source_result.scalar_one_or_none()
-        if source:
-            source_url = source.url
+    source_ids = [ev.source_id for ev in evidence_rows if ev.source_id]
+    source_map: dict[str, str] = {}
+    if source_ids:
+        sources_result = await session.execute(
+            select(Source.id, Source.url).where(Source.id.in_(source_ids))
+        )
+        for s_id, s_url in sources_result.all():
+            source_map[s_id] = s_url
 
+    for ev in evidence_rows:
         evidence_details.append(
             EvidenceDetail(
                 id=ev.id,
                 record_id=ev.record_id,
                 source_id=ev.source_id,
                 snippet=ev.snippet,
-                source_url=source_url,
+                source_url=source_map.get(ev.source_id),
             )
         )
 

@@ -92,3 +92,14 @@ def test_deduplicate_keeps_distinct_records():
 
     deduped = deduplicate(records, key_fields=["company", "title"])
     assert len(deduped) == 2
+
+
+def test_deduplicate_empty_key_fields_does_not_collapse():
+    records = [
+        {"name": "Alice", "role": "Engineer", "_source_id": "s1", "evidence": "e1"},
+        {"name": "Bob", "role": "Designer", "_source_id": "s2", "evidence": "e2"},
+        {"name": "Charlie", "role": "Manager", "_source_id": "s3", "evidence": "e3"},
+    ]
+    # Passing empty key_fields should fallback to record keys and preserve distinct records
+    deduped = deduplicate(records, key_fields=[])
+    assert len(deduped) == 3

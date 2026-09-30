@@ -1,7 +1,7 @@
 import logging
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
@@ -14,8 +14,20 @@ _db_url = settings.database_url
 if _db_url.startswith("sqlite:///"):
     _db_url = _db_url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
 
-engine = create_async_engine(_db_url, echo=False)
+connect_args = {"timeout": 30.0} if "sqlite" in _db_url else {}
+engine = create_async_engine(_db_url, echo=False, connect_args=connect_args)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+@event.listens_for(engine.sync_engine, "connect")
+def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:  # noqa: ANN001
+    """Enforce foreign keys and 30s busy timeout for SQLite concurrency."""
+    if "sqlite" in _db_url:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON")
+        cursor.execute("PRAGMA busy_timeout = 30000")
+        cursor.close()
+
 
 # Additive column migrations: (table, column, sql_type, default)
 _MIGRATIONS: list[tuple[str, str, str, str]] = [
@@ -39,9 +51,11 @@ async def create_all() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
         await _apply_migrations(conn)
-        # Enable WAL mode for concurrent reads during live streaming writes
+        # Enable WAL mode, foreign keys, and busy timeout for concurrent reads and writes
         if "sqlite" in _db_url:
             await conn.execute(text("PRAGMA journal_mode=WAL"))
+            await conn.execute(text("PRAGMA foreign_keys=ON"))
+            await conn.execute(text("PRAGMA busy_timeout=30000"))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

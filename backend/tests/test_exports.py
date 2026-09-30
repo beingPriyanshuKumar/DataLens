@@ -4,11 +4,13 @@ from app.api.exports import _sanitize_cell, _sanitize_row
 
 
 def test_sanitize_cell_formula_injection():
-    # Dangerous Excel prefixes: =, +, -, @
+    # Dangerous Excel prefixes: =, +, -, @, %, \t, including leading whitespace evasion
     assert _sanitize_cell("=HYPERLINK('http://evil.com')") == "'=HYPERLINK('http://evil.com')"
     assert _sanitize_cell("+1+1") == "'+1+1"
     assert _sanitize_cell("-2+3") == "'-2+3"
     assert _sanitize_cell("@SUM(1,2)") == "'@SUM(1,2)"
+    assert _sanitize_cell("  =cmd|' /C calc'!A0") == "'  =cmd|' /C calc'!A0"
+    assert _sanitize_cell("\t=SUM(A1:A10)") == "'\t=SUM(A1:A10)"
 
     # Normal text should remain untouched
     assert _sanitize_cell("Software Engineer") == "Software Engineer"

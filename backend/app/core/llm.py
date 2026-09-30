@@ -33,6 +33,7 @@ class LLMError(Exception):
 # Schema simplification: strip fields that some providers reject
 # ---------------------------------------------------------------------------
 
+
 def simplify_schema(schema: dict[str, Any], provider: str) -> dict[str, Any]:
     """Prepare and clean JSON Schema for the target provider.
 
@@ -54,7 +55,9 @@ def simplify_schema(schema: dict[str, Any], provider: str) -> dict[str, Any]:
                 if ref_key in defs:
                     resolved = copy.deepcopy(defs[ref_key])
                     return _resolve_refs(resolved)
-            return {k: _resolve_refs(v) for k, v in obj.items() if k not in {"$defs", "definitions"}}
+            return {
+                k: _resolve_refs(v) for k, v in obj.items() if k not in {"$defs", "definitions"}
+            }
         if isinstance(obj, list):
             return [_resolve_refs(item) for item in obj]
         return obj
@@ -80,11 +83,19 @@ def simplify_schema(schema: dict[str, Any], provider: str) -> dict[str, Any]:
                         continue
                 cleaned[k] = _clean(v, k)
 
-            if provider == "gemini" and cleaned.get("type") == "object" and not cleaned.get("properties"):
+            if (
+                provider == "gemini"
+                and cleaned.get("type") == "object"
+                and not cleaned.get("properties")
+            ):
                 cleaned["type"] = "string"
                 cleaned["description"] = "JSON-encoded key-value mapping"
 
-            if "required" in cleaned and "properties" in cleaned and isinstance(cleaned["required"], list):
+            if (
+                "required" in cleaned
+                and "properties" in cleaned
+                and isinstance(cleaned["required"], list)
+            ):
                 cleaned["required"] = [r for r in cleaned["required"] if r in cleaned["properties"]]
                 if not cleaned["required"]:
                     del cleaned["required"]
@@ -100,6 +111,7 @@ def simplify_schema(schema: dict[str, Any], provider: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Anthropic provider
 # ---------------------------------------------------------------------------
+
 
 async def _generate_anthropic(
     system: str,
@@ -143,8 +155,8 @@ async def _generate_anthropic(
                     ),
                     timeout=LLM_TIMEOUT,
                 )
-        except asyncio.TimeoutError:
-            raise LLMError(f"LLM call timed out after {LLM_TIMEOUT}s")
+        except TimeoutError as exc:
+            raise LLMError(f"LLM call timed out after {LLM_TIMEOUT}s") from exc
         except Exception as exc:
             raise LLMError(f"Anthropic API call failed: {exc}") from exc
 
@@ -170,13 +182,15 @@ async def _generate_anthropic(
             if attempt == 0:
                 logger.warning("Anthropic output validation failed, retrying: %s", exc)
                 messages.append({"role": "assistant", "content": response.content})
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        f"Your previous output failed validation:\n{exc}\n"
-                        "Please fix the errors and try again."
-                    ),
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Your previous output failed validation:\n{exc}\n"
+                            "Please fix the errors and try again."
+                        ),
+                    }
+                )
                 continue
             raise LLMError(f"Anthropic output failed validation after retry: {exc}") from exc
 
@@ -186,6 +200,7 @@ async def _generate_anthropic(
 # ---------------------------------------------------------------------------
 # Gemini provider
 # ---------------------------------------------------------------------------
+
 
 async def _generate_gemini(
     system: str,
@@ -197,8 +212,7 @@ async def _generate_gemini(
 
     if not settings.gemini_api_key:
         raise LLMError(
-            "Gemini API key is not configured. "
-            "Set GEMINI_API_KEY in backend/.env and restart."
+            "Gemini API key is not configured. Set GEMINI_API_KEY in backend/.env and restart."
         )
 
     client = genai.Client(api_key=settings.gemini_api_key)
@@ -235,7 +249,7 @@ async def _generate_gemini(
                         ),
                         timeout=LLM_TIMEOUT,
                     )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 last_error = LLMError(f"LLM call timed out after {LLM_TIMEOUT}s on {active_model}")
                 if attempt == 0:
                     await asyncio.sleep(0.5)
@@ -243,13 +257,17 @@ async def _generate_gemini(
                 break
             except Exception as exc:
                 err_str = str(exc)
-                logger.warning("Gemini model %s attempt %d failed: %s", active_model, attempt, err_str[:120])
+                logger.warning(
+                    "Gemini model %s attempt %d failed: %s", active_model, attempt, err_str[:120]
+                )
                 last_error = exc
 
                 # Handle 429 rate limit
                 if "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
                     # Check if this is a daily quota exhaustion (waiting seconds will NOT help)
-                    is_daily = "free_tier_requests" in err_str or "GenerateRequestsPerDay" in err_str
+                    is_daily = (
+                        "free_tier_requests" in err_str or "GenerateRequestsPerDay" in err_str
+                    )
                     if is_daily:
                         logger.warning(
                             "Gemini model %s daily quota reached. Switching to next model immediately...",
@@ -261,7 +279,11 @@ async def _generate_gemini(
                     # If delay is small (<= 5s), do a quick retry; otherwise switch models immediately
                     if attempt == 0 and delay is not None and delay <= 5.0:
                         wait_secs = delay + 0.5
-                        logger.info("Gemini brief rate limit on %s. Waiting %.1fs...", active_model, wait_secs)
+                        logger.info(
+                            "Gemini brief rate limit on %s. Waiting %.1fs...",
+                            active_model,
+                            wait_secs,
+                        )
                         await asyncio.sleep(wait_secs)
                         continue
                     # Long delay or second attempt: try next candidate model immediately without waiting
@@ -297,7 +319,11 @@ async def _generate_gemini(
                     clean_text = "\n".join(lines).strip()
 
                 data = json.loads(clean_text)
-                if isinstance(data, dict) and "filters" in data and isinstance(data["filters"], str):
+                if (
+                    isinstance(data, dict)
+                    and "filters" in data
+                    and isinstance(data["filters"], str)
+                ):
                     try:
                         data["filters"] = json.loads(data["filters"])
                     except Exception:
@@ -305,7 +331,12 @@ async def _generate_gemini(
 
                 return output_model.model_validate(data)
             except (json.JSONDecodeError, ValidationError) as exc:
-                logger.warning("Gemini output validation failed on %s (attempt %d): %s", active_model, attempt, exc)
+                logger.warning(
+                    "Gemini output validation failed on %s (attempt %d): %s",
+                    active_model,
+                    attempt,
+                    exc,
+                )
                 last_error = exc
                 if attempt == 0:
                     continue
@@ -317,6 +348,7 @@ async def _generate_gemini(
 # ---------------------------------------------------------------------------
 # Public API (unchanged signature for all callers)
 # ---------------------------------------------------------------------------
+
 
 async def generate_structured(
     system: str,

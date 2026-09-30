@@ -42,6 +42,7 @@ def _normalize_url(url: str) -> str:
 # Tavily provider
 # ---------------------------------------------------------------------------
 
+
 async def _search_tavily(query: str, limit: int = 10) -> list[SearchResult]:
     """Search via Tavily API."""
     try:
@@ -83,6 +84,7 @@ async def _search_tavily(query: str, limit: int = 10) -> list[SearchResult]:
 # ---------------------------------------------------------------------------
 # DuckDuckGo provider (keyless)
 # ---------------------------------------------------------------------------
+
 
 async def _search_ddg(query: str, limit: int = 10) -> list[SearchResult]:
     """Search via DuckDuckGo (no API key required)."""
@@ -140,6 +142,7 @@ async def _search_ddg(query: str, limit: int = 10) -> list[SearchResult]:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 async def search(query: str, limit: int = 10) -> list[SearchResult]:
     """Search using the configured provider."""
     provider = settings.get_search_provider()
@@ -167,7 +170,9 @@ async def search_multiple(queries: list[str], limit_per_query: int = 10) -> list
     provider = settings.get_search_provider()
     logger.info(
         "Search complete: %d queries via %s → %d unique URLs",
-        len(queries), provider, len(all_results),
+        len(queries),
+        provider,
+        len(all_results),
     )
 
     return all_results
@@ -186,14 +191,23 @@ async def check_search_health() -> dict:
     try:
         if provider == "tavily":
             if not settings.tavily_api_key:
-                return {"provider": "tavily", "ok": False, "error": "Missing TAVILY_API_KEY", "note": None}
+                return {
+                    "provider": "tavily",
+                    "ok": False,
+                    "error": "Missing TAVILY_API_KEY",
+                    "note": None,
+                }
             await search("test", limit=1)
             res = {"provider": "tavily", "ok": True, "error": None, "note": None}
         else:
             try:
-                from ddgs import DDGS
+                import ddgs
+
+                _ = ddgs.DDGS
             except ImportError:
-                from duckduckgo_search import DDGS  # type: ignore
+                import duckduckgo_search  # type: ignore
+
+                _ = duckduckgo_search.DDGS
             res = {
                 "provider": "ddg",
                 "ok": True,

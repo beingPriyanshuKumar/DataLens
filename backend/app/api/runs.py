@@ -133,6 +133,12 @@ async def cancel_run(
 
 @router.get("/runs/{run_id}/events")
 async def stream_events(run_id: str, request: Request, after: int = 0):
+    # Verify run exists upfront to prevent runaway loops
+    async with async_session() as session:
+        check_result = await session.execute(select(Run.id).where(Run.id == run_id))
+        if check_result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+
     async def event_generator():
         cursor = after
         while True:
@@ -169,10 +175,10 @@ async def stream_events(run_id: str, request: Request, after: int = 0):
 
                 run_result = await session.execute(select(Run).where(Run.id == run_id))
                 run = run_result.scalar_one_or_none()
-                if run and run.status in TERMINAL_STATUSES and not events:
+                if run is None or (run.status in TERMINAL_STATUSES and not events):
                     yield {
                         "event": "done",
-                        "data": json.dumps({"status": run.status.value}),
+                        "data": json.dumps({"status": run.status.value if run else "deleted"}),
                     }
                     break
 

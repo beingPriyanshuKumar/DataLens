@@ -89,20 +89,46 @@ class APIRateLimiter:
     """In-memory sliding window rate limiter for FastAPI HTTP endpoints.
 
     Prevents user flooding, double-clicking, and automated scraping.
+    Includes proxy header resolution and automatic memory leak eviction.
     """
 
     def __init__(self, requests_per_minute: int | None = None):
-        self.rpm = requests_per_minute or getattr(settings, "api_rate_limit_per_minute", 20)
+        self.rpm = requests_per_minute or getattr(settings, "api_rate_limit_per_minute", 60)
         self.history: dict[str, list[float]] = defaultdict(list)
         self._lock = asyncio.Lock()
+        self._last_prune: float = time.monotonic()
+
+    def _extract_ip(self, request: Request) -> str:
+        """Extract client IP, inspecting proxy headers if present."""
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            # First IP in comma-separated list is the original client
+            client = forwarded.split(",")[0].strip()
+            if client:
+                return client
+        real_ip = request.headers.get("x-real-ip")
+        if real_ip and real_ip.strip():
+            return real_ip.strip()
+        return request.client.host if request.client else "127.0.0.1"
+
+    def _prune_expired(self, cutoff: float) -> None:
+        """Evict stale IP entries to prevent monotonically growing memory leaks."""
+        stale_ips = [ip for ip, ts in self.history.items() if not ts or ts[-1] <= cutoff]
+        for ip in stale_ips:
+            self.history.pop(ip, None)
 
     async def check(self, request: Request) -> None:
         """Validate request against IP-based rate limit."""
-        client_ip = request.client.host if request.client else "127.0.0.1"
+        client_ip = self._extract_ip(request)
         now = time.monotonic()
         cutoff = now - 60.0
 
         async with self._lock:
+            # Periodic pruning every 60 seconds
+            if now - self._last_prune > 60.0:
+                self._prune_expired(cutoff)
+                self._last_prune = now
+
             timestamps = [t for t in self.history[client_ip] if t > cutoff]
             if len(timestamps) >= self.rpm:
                 oldest = timestamps[0]
