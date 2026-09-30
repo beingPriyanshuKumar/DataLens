@@ -34,21 +34,43 @@ def test_normalize_date():
 
 
 def test_normalize_url():
-    assert normalize_url(None) is None
+    result, valid = normalize_url(None)
+    assert result is None
+    assert valid is True
 
     raw = "HTTPS://Example.COM/path?utm_source=twitter&utm_medium=cpc&id=123#section"
-    normalized = normalize_url(raw)
-    assert "example.com" in normalized
-    assert "utm_source" not in normalized
-    assert "utm_medium" not in normalized
-    assert "id=123" in normalized
-    assert "#section" not in normalized
+    result, valid = normalize_url(raw)
+    assert valid is True
+    assert "example.com" in result
+    assert "utm_source" not in result
+    assert "utm_medium" not in result
+    assert "id=123" in result
+    assert "#section" not in result
 
     # Relative URL with base_url
-    assert (
-        normalize_url("/jobs/123", base_url="https://example.com/listings")
-        == "https://example.com/jobs/123"
-    )
+    result, valid = normalize_url("/jobs/123", base_url="https://example.com/listings")
+    assert valid is True
+    assert result == "https://example.com/jobs/123"
+
+
+def test_normalize_url_rejects_dangerous_schemes():
+    """URL-typed fields reject non-http/https schemes (defense in depth)."""
+    result, valid = normalize_url("javascript:alert(1)")
+    assert result is None
+    assert valid is False
+
+    result, valid = normalize_url("data:text/html,<script>alert(1)</script>")
+    assert result is None
+    assert valid is False
+
+    result, valid = normalize_url("vbscript:msgbox")
+    assert result is None
+    assert valid is False
+
+    # Valid http/https should still work
+    result, valid = normalize_url("https://example.com")
+    assert valid is True
+    assert result is not None
 
 
 def test_normalize_email():

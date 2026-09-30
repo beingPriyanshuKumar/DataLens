@@ -26,10 +26,13 @@ def normalize_date(value: str | None) -> tuple[str | None, bool]:
     return parsed.strftime("%Y-%m-%d"), True
 
 
-def normalize_url(value: str | None, base_url: str | None = None) -> str | None:
-    """Normalize a URL: strip tracking params, lowercase host."""
+def normalize_url(value: str | None, base_url: str | None = None) -> tuple[str | None, bool]:
+    """Normalize a URL: strip tracking params, lowercase host.
+
+    Only http/https schemes are allowed. Returns (result, valid).
+    """
     if not value:
-        return None
+        return None, True
     value = value.strip()
     if not value.lower().startswith(("http://", "https://")):
         if base_url:
@@ -37,11 +40,16 @@ def normalize_url(value: str | None, base_url: str | None = None) -> str | None:
 
             value = urljoin(base_url, value)
         else:
-            return value
+            # Check if it's a dangerous scheme
+            if ":" in value and not value.startswith("/"):
+                return None, False
+            return value, True
     parsed = urlparse(value)
+    if parsed.scheme.lower() not in ("http", "https"):
+        return None, False
     params = parse_qs(parsed.query)
     cleaned = {k: v for k, v in params.items() if not k.startswith("utm_")}
-    return urlunparse(
+    result = urlunparse(
         parsed._replace(
             scheme=parsed.scheme.lower(),
             netloc=parsed.netloc.lower(),
@@ -49,6 +57,7 @@ def normalize_url(value: str | None, base_url: str | None = None) -> str | None:
             fragment="",
         )
     )
+    return result, True
 
 
 def normalize_email(value: str | None) -> str | None:
@@ -100,7 +109,12 @@ def normalize_record(
             if not success:
                 flags.append(f"invalid_date_{name}")
         elif field_type == "url":
-            normalized[name] = normalize_url(value if isinstance(value, str) else None, source_url)
+            url_result, url_valid = normalize_url(
+                value if isinstance(value, str) else None, source_url
+            )
+            normalized[name] = url_result
+            if not url_valid:
+                flags.append(f"invalid_url_{name}")
         elif field_type == "email":
             normalized[name] = normalize_email(value if isinstance(value, str) else None)
         elif field_type in ("int", "float"):

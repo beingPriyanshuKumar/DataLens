@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import Button from "./Button";
 import ConfidenceBar from "./ConfidenceBar";
+import { safeHref } from "../utils/url";
 import type { EvidenceDetail, RecordDetail } from "../types";
 import "./Drawer.css";
 
@@ -153,16 +154,23 @@ export default function Drawer({
                       {domain && (
                         <span className="drawer__evidence-domain">{domain}</span>
                       )}
-                      {ev.source_url && (
-                        <a
-                          href={ev.source_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="drawer__evidence-url"
-                        >
-                          {ev.source_url}
-                        </a>
-                      )}
+                      {ev.source_url && (() => {
+                        const safe = safeHref(ev.source_url);
+                        return safe ? (
+                          <a
+                            href={safe}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="drawer__evidence-url"
+                          >
+                            {ev.source_url}
+                          </a>
+                        ) : (
+                          <span className="drawer__evidence-url">
+                            {ev.source_url}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                 );

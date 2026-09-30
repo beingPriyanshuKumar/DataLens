@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -31,6 +31,31 @@ class TaskSpec(BaseModel):
     source_hints: list[str] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
     clarification: str | None = None
+
+    @field_validator("filters", mode="before")
+    @classmethod
+    def coerce_filter_values(cls, v: Any) -> dict[str, str]:
+        """Coerce scalar filter values (int, float, bool) to strings.
+
+        LLMs sometimes return numeric constraints like {max_salary: 100000}.
+        Lists are joined with ', '. Nested dicts are rejected.
+        """
+        if not isinstance(v, dict):
+            return {}
+        result: dict[str, str] = {}
+        for key, val in v.items():
+            if isinstance(val, dict):
+                msg = f"Nested dict not allowed in filters for key '{key}'"
+                raise ValueError(msg)
+            if isinstance(val, list):
+                result[str(key)] = ", ".join(str(item) for item in val)
+            elif isinstance(val, (int, float, bool)):
+                result[str(key)] = str(val)
+            elif val is None:
+                continue
+            else:
+                result[str(key)] = str(val)
+        return result
 
 
 class PlanStep(BaseModel):

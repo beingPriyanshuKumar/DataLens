@@ -28,6 +28,7 @@ import {
   getExportUrl,
 } from "../api";
 import { useRunEvents } from "../hooks/useRunEvents";
+import { safeHref } from "../utils/url";
 import type {
   RecordDetail,
   RunStats,
@@ -287,19 +288,26 @@ export default function TaskDetail() {
     {
       key: "url",
       label: "URL",
-      render: (s) => (
-        <a
-          href={s.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ textDecoration: "underline", color: "var(--color-ink)" }}
-          onClick={(e) => e.stopPropagation()}
-        >
+      render: (s) => {
+        const safe = safeHref(s.url);
+        return safe ? (
+          <a
+            href={safe}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ textDecoration: "underline", color: "var(--color-ink)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="data-table__cell-truncate" title={s.url}>
+              {s.url}
+            </div>
+          </a>
+        ) : (
           <div className="data-table__cell-truncate" title={s.url}>
             {s.url}
           </div>
-        </a>
-      ),
+        );
+      },
     },
     {
       key: "status",
