@@ -6,9 +6,9 @@ DataLens is an autonomous web intelligence system that converts ambiguous natura
 
 ## 🚀 Key Capabilities
 
-- **Natural Language Schema Inference:** Dynamically generates field types, required constraints, and entity definitions from prompts using structured LLM outputs (Google Gemini or Anthropic Claude).
-- **Multi-Angle Search Planning:** Deconstructs goals into orthogonal queries across providers (**Tavily Search API** or keyless **DuckDuckGo**).
-- **Ethical Collection & SSRF Defense:** Enforces `robots.txt` compliance, 2-second per-domain politeness delays, blocks walled-garden domains (LinkedIn, Facebook, Twitter/X, Reddit), and strictly rejects private, loopback, link-local, and cloud metadata IPs (`169.254.169.254`, IPv6 `[::1]`, `[fe80::1]`) across all HTTP redirects.
+- **Natural Language Schema Inference & Required Fields Cap:** Dynamically generates field types, required constraints, and entity definitions from prompts using structured LLM outputs (Google Gemini or Anthropic Claude). Caps required fields to primary identifiers (max 2–3) so unstated secondary attributes (e.g. stipend amounts or contact emails) never cause valid records to be discarded.
+- **Multi-Angle Search Planning with Domain Preservation:** Deconstructs goals into orthogonal queries across providers (**Tavily Search API** or keyless **DuckDuckGo**), preserving critical domain qualifiers (`AI`, `Fintech`, specific technologies) while avoiding walled gardens and generic job board login walls.
+- **Ethical Collection & SSRF Defense:** Enforces `robots.txt` compliance, 2-second per-domain politeness delays, blocks walled-garden and video platforms (LinkedIn, Facebook, Instagram, Twitter/X, Reddit, YouTube), and strictly rejects private, loopback, link-local, and cloud metadata IPs (`169.254.169.254`, IPv6 `[::1]`, `[fe80::1]`) across all HTTP redirects.
 - **Anti-Hallucination Evidence Verification:** Every extracted record requires verbatim text evidence matching the raw scraped page. Records with ungrounded claims are dropped automatically.
 - **Data Normalization & Smart Deduplication:** Automatically normalizes dates, currencies, URLs, and emails. Deduplicates entities using exact key hashing and RapidFuzz token sorting with non-null field merging.
 - **Explainable 3-Factor Confidence Scoring:** Computes a transparent confidence score ($0.0 - 1.0$) based on field completeness, cross-source corroboration, and schema cleanliness.
@@ -148,7 +148,7 @@ Run test suite:
 ```bash
 pytest
 ```
-*Expected: 55 passed in ~6.5 seconds.*
+*Expected: 69 passed in ~7 seconds.*
 
 Start the FastAPI development server:
 ```bash
@@ -173,6 +173,12 @@ npm run dev
 ```
 
 - Dashboard Web App: `http://localhost:5173`
+
+Run frontend unit tests:
+```bash
+npx vitest run
+```
+*Expected: 16 passed.*
 
 To build the optimized production bundle:
 ```bash
@@ -230,11 +236,15 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 
 Try these benchmark prompts in the DataLens dashboard:
 
-1. **Machine Learning Jobs:**
+1. **AI Startups Hiring Student Interns:**
+   > *"Find 50 AI startups that are open to hire students with zero experience with paid internship"*
+2. **European Cybersecurity Startups:**
+   > *"Find 10 cybersecurity startups in Europe with their headquarters city and core security product"*
+3. **Machine Learning Jobs:**
    > *"Find 15 remote machine learning engineer jobs with salary ranges, companies, and requirements"*
-2. **Indian SaaS Startup Seed Funding:**
+4. **Indian SaaS Startup Seed Funding:**
    > *"Find 10 Indian SaaS startups that raised seed funding in 2025 with investor names and round size"*
-3. **Developer Hackathon Sponsors:**
+5. **Developer Hackathon Sponsors:**
    > *"Find companies that sponsored developer hackathons in 2025 or 2026 with their developer relations links and sponsored prize categories"*
 
 ---
