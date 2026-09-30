@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     fetch_concurrency: int = 5
     per_domain_delay_seconds: float = 2.0
     run_timeout_seconds: int = 600
+    max_concurrent_runs: int = 2
+    trusted_proxies: str = ""
 
     # Rate limits & pacing: 60 rpm for user HTTP requests, 0.5s interval for fast planning
     llm_min_interval_seconds: float = 0.5

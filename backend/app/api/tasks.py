@@ -2,21 +2,23 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import delete, func, select
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.planner import build_plan
 from app.core.rate_limit import api_limiter
 from app.core.runner import start_run
-from app.core.spec import parse_prompt
+from app.core.spec import enforce_required_fields, parse_prompt
 from app.db import get_session
 from app.models import Record, RecordEvidence, Run, RunEvent, RunStatus, Source, Task
 from app.schemas import (
     CreateTaskRequest,
+    LatestRunSummary,
     PreviewRequest,
     PreviewResponse,
-    TaskSummary,
+    TaskItem,
+    TaskListResponse,
 )
 
 router = APIRouter(tags=["tasks"])
@@ -25,7 +27,7 @@ router = APIRouter(tags=["tasks"])
 @router.post("/tasks/preview")
 async def preview_task(req: PreviewRequest, request: Request) -> PreviewResponse:
     await api_limiter.check(request)
-    spec = await parse_prompt(req.prompt)
+    spec = await parse_prompt(req.prompt, region_code=req.region)
     if spec.clarification:
         return PreviewResponse(spec=spec, plan=None)
     plan = await build_plan(spec)
@@ -39,9 +41,10 @@ async def create_task(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     await api_limiter.check(request)
+    spec = enforce_required_fields(req.spec)
     task = Task(
         prompt=req.prompt,
-        spec=req.spec.model_dump_json(),
+        spec=spec.model_dump_json(),
     )
     session.add(task)
     await session.flush()
@@ -61,44 +64,98 @@ async def create_task(
 
 @router.get("/tasks")
 async def list_tasks(
+    response: Response,
+    q: str | None = None,
+    status: str | None = None,
+    sort: str = "created_at",
+    order: str = "desc",
+    limit: int = 50,
+    offset: int = 0,
     session: AsyncSession = Depends(get_session),
-) -> list[TaskSummary]:
-    tasks_result = await session.execute(select(Task).order_by(Task.created_at.desc()))
+) -> TaskListResponse:
+    base_query = select(Task)
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        base_query = base_query.where(or_(Task.prompt.ilike(pattern), Task.spec.ilike(pattern)))
+
+    if sort == "updated_at":
+        order_col = Task.updated_at.desc() if order.lower() == "desc" else Task.updated_at.asc()
+    else:
+        order_col = Task.created_at.desc() if order.lower() == "desc" else Task.created_at.asc()
+
+    total_result = await session.execute(select(func.count()).select_from(base_query.subquery()))
+    total = total_result.scalar() or 0
+
+    tasks_result = await session.execute(base_query.order_by(order_col).offset(offset).limit(limit))
     tasks = tasks_result.scalars().all()
 
-    summaries: list[TaskSummary] = []
+    items: list[TaskItem] = []
     for task in tasks:
         spec_data = json.loads(task.spec)
-        title = spec_data.get("title", task.prompt[:50])
+        title = spec_data.get("title") or task.prompt[:50]
+        region = spec_data.get("region", "GLOBAL")
 
-        latest_run_result = await session.execute(
-            select(Run).where(Run.task_id == task.id).order_by(Run.started_at.desc()).limit(1)
+        runs_res = await session.execute(
+            select(Run).where(Run.task_id == task.id).order_by(Run.started_at.desc())
         )
-        latest_run = latest_run_result.scalar_one_or_none()
+        runs = runs_res.scalars().all()
+        run_count = len(runs)
+        latest_run = runs[0] if runs else None
 
-        record_count = 0
-        status = None
-        last_run_at = None
+        latest_summary = None
         if latest_run:
-            status = latest_run.status.value if latest_run.status else None
-            last_run_at = latest_run.started_at.isoformat() if latest_run.started_at else None
             count_result = await session.execute(
                 select(func.count(Record.id)).where(Record.run_id == latest_run.id)
             )
-            record_count = count_result.scalar() or 0
+            rec_count = count_result.scalar() or 0
+            latest_summary = LatestRunSummary(
+                id=latest_run.id,
+                status=latest_run.status.value if latest_run.status else "queued",
+                started_at=latest_run.started_at.isoformat() if latest_run.started_at else None,
+                finished_at=latest_run.finished_at.isoformat() if latest_run.finished_at else None,
+                record_count=rec_count,
+                error=latest_run.error,
+            )
 
-        summaries.append(
-            TaskSummary(
+        run_summaries = []
+        for r in runs:
+            c_res = await session.execute(
+                select(func.count(Record.id)).where(Record.run_id == r.id)
+            )
+            r_rec_count = c_res.scalar() or 0
+            run_summaries.append(
+                LatestRunSummary(
+                    id=r.id,
+                    status=r.status.value if r.status else "queued",
+                    started_at=r.started_at.isoformat() if r.started_at else None,
+                    finished_at=r.finished_at.isoformat() if r.finished_at else None,
+                    record_count=r_rec_count,
+                    error=r.error,
+                )
+            )
+
+        if (
+            status
+            and status.lower() != "all"
+            and (not latest_run or latest_run.status.value.lower() != status.lower())
+        ):
+            continue
+
+        items.append(
+            TaskItem(
                 id=task.id,
-                prompt=task.prompt,
                 title=title,
-                status=status,
-                record_count=record_count,
-                last_run_at=last_run_at,
+                prompt=task.prompt,
+                region=region,
+                created_at=task.created_at.isoformat(),
+                run_count=run_count,
+                latest_run=latest_summary,
+                runs=run_summaries,
             )
         )
 
-    return summaries
+    response.headers["X-Total-Count"] = str(total)
+    return TaskListResponse(items=items, total=total)
 
 
 @router.get("/tasks/{task_id}")
@@ -115,22 +172,33 @@ async def get_task(
         select(Run).where(Run.task_id == task_id).order_by(Run.started_at.desc())
     )
     runs = runs_result.scalars().all()
+    spec_data = json.loads(task.spec)
+
+    run_list = []
+    for r in runs:
+        count_res = await session.execute(
+            select(func.count(Record.id)).where(Record.run_id == r.id)
+        )
+        rec_count = count_res.scalar() or 0
+        run_list.append(
+            {
+                "id": r.id,
+                "status": r.status.value,
+                "stats": json.loads(r.stats) if r.stats else {},
+                "record_count": rec_count,
+                "error": r.error,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+            }
+        )
 
     return {
         "id": task.id,
         "prompt": task.prompt,
-        "spec": json.loads(task.spec),
+        "spec": spec_data,
+        "region": spec_data.get("region", "GLOBAL"),
         "created_at": task.created_at.isoformat(),
-        "runs": [
-            {
-                "id": r.id,
-                "status": r.status.value,
-                "stats": json.loads(r.stats),
-                "started_at": r.started_at.isoformat() if r.started_at else None,
-                "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-            }
-            for r in runs
-        ],
+        "runs": run_list,
     }
 
 

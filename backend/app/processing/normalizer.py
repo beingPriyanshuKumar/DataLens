@@ -26,10 +26,13 @@ def normalize_date(value: str | None) -> tuple[str | None, bool]:
     return parsed.strftime("%Y-%m-%d"), True
 
 
-def normalize_url(value: str | None, base_url: str | None = None) -> str | None:
-    """Normalize a URL: strip tracking params, lowercase host."""
+def normalize_url(value: str | None, base_url: str | None = None) -> tuple[str | None, bool]:
+    """Normalize a URL: strip tracking params, lowercase host.
+
+    Only http/https schemes are allowed. Returns (result, valid).
+    """
     if not value:
-        return None
+        return None, True
     value = value.strip()
     if not value.lower().startswith(("http://", "https://")):
         if base_url:
@@ -37,11 +40,16 @@ def normalize_url(value: str | None, base_url: str | None = None) -> str | None:
 
             value = urljoin(base_url, value)
         else:
-            return value
+            # Check if it's a dangerous scheme
+            if ":" in value and not value.startswith("/"):
+                return None, False
+            return value, True
     parsed = urlparse(value)
+    if parsed.scheme.lower() not in ("http", "https"):
+        return None, False
     params = parse_qs(parsed.query)
     cleaned = {k: v for k, v in params.items() if not k.startswith("utm_")}
-    return urlunparse(
+    result = urlunparse(
         parsed._replace(
             scheme=parsed.scheme.lower(),
             netloc=parsed.netloc.lower(),
@@ -49,6 +57,7 @@ def normalize_url(value: str | None, base_url: str | None = None) -> str | None:
             fragment="",
         )
     )
+    return result, True
 
 
 def normalize_email(value: str | None) -> str | None:
@@ -69,6 +78,29 @@ def normalize_number(value: str | int | float | None) -> float | None:
         return float(cleaned)
     except ValueError:
         return None
+
+
+CURRENCY_PATTERNS = {
+    "inr": re.compile(r"(₹|\b(rs\.?|inr|rupees?)\b)", re.IGNORECASE),
+    "usd": re.compile(r"(\$|\b(usd|dollars?)\b)", re.IGNORECASE),
+    "eur": re.compile(r"(€|\b(eur|euros?)\b)", re.IGNORECASE),
+    "gbp": re.compile(r"(£|\b(gbp|pounds?)\b)", re.IGNORECASE),
+}
+
+CURRENCY_SUFFIXES = {
+    "_inr": "inr",
+    "_usd": "usd",
+    "_eur": "eur",
+    "_gbp": "gbp",
+}
+
+
+def detect_currency(value_str: str) -> str | None:
+    """Detect currency symbol or code in a string."""
+    for curr, pattern in CURRENCY_PATTERNS.items():
+        if pattern.search(value_str):
+            return curr
+    return None
 
 
 def normalize_record(
@@ -100,14 +132,33 @@ def normalize_record(
             if not success:
                 flags.append(f"invalid_date_{name}")
         elif field_type == "url":
-            normalized[name] = normalize_url(value if isinstance(value, str) else None, source_url)
+            url_result, url_valid = normalize_url(
+                value if isinstance(value, str) else None, source_url
+            )
+            normalized[name] = url_result
+            if not url_valid:
+                flags.append(f"invalid_url_{name}")
         elif field_type == "email":
             normalized[name] = normalize_email(value if isinstance(value, str) else None)
         elif field_type in ("int", "float"):
-            num = normalize_number(value)
-            normalized[name] = int(num) if field_type == "int" and num is not None else num
-            if value is not None and num is None:
-                flags.append(f"invalid_number_{name}")
+            currency_mismatched = False
+            if isinstance(value, str):
+                name_lower = name.lower()
+                for suffix, expected_curr in CURRENCY_SUFFIXES.items():
+                    if name_lower.endswith(suffix):
+                        detected = detect_currency(value)
+                        if detected is not None and detected != expected_curr:
+                            currency_mismatched = True
+                            break
+            if currency_mismatched:
+                normalized[name] = None
+                flags.append("currency_mismatch")
+                flags.append(f"currency_mismatch_{name}")
+            else:
+                num = normalize_number(value)
+                normalized[name] = int(num) if field_type == "int" and num is not None else num
+                if value is not None and num is None:
+                    flags.append(f"invalid_number_{name}")
         else:
             normalized[name] = value
 

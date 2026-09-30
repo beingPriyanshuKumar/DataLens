@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.collectors.fetcher import FetchError, fetch_page
 from app.collectors.policy import clear_robots_cache, is_allowed
 from app.collectors.search import search_multiple
+from app.config import settings
 from app.core.events import emit
 from app.db import async_session
 from app.models import (
@@ -148,12 +149,23 @@ def _build_dataset(
     valid_records: list[dict] = []
     for rec in all_verified:
         normalized, norm_flags = normalize_record(rec, field_types)
-        is_valid, val_flags = validate_record(normalized, spec.fields, norm_flags)
+        existing_flags = list(rec.get("_flags", [])) + norm_flags
+        is_valid, val_flags = validate_record(normalized, spec.fields, existing_flags)
         if is_valid:
             normalized["_flags"] = val_flags
             valid_records.append(normalized)
     deduped = deduplicate(valid_records, spec.key_fields)
     return deduped
+
+
+_run_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_run_semaphore() -> asyncio.Semaphore:
+    global _run_semaphore
+    if _run_semaphore is None:
+        _run_semaphore = asyncio.Semaphore(settings.max_concurrent_runs)
+    return _run_semaphore
 
 
 async def execute_run(run_id: str) -> None:
@@ -168,42 +180,62 @@ async def execute_run(run_id: str) -> None:
             await emit(run_id, EventLevel.INFO, "cancel", "Run cancelled before start")
             return
 
-        await _update_run(run_id, status=RunStatus.RUNNING, started_at=datetime.now(UTC))
-        await emit(run_id, EventLevel.INFO, "start", "Run started")
+        # Acquire concurrency slot (PERF-001 / F-04)
+        await emit(run_id, EventLevel.INFO, "queue", "Queued: waiting for a free slot")
+        sem = _get_run_semaphore()
 
-        # Load run and task details, snapshot the spec
-        async with async_session() as session:
-            from app.models import Task
-
-            run = await _get_run(session, run_id)
-            if run is None:
+        async with sem:
+            if await _is_cancelled(run_id):
+                await _update_run(run_id, status=RunStatus.CANCELLED, finished_at=datetime.now(UTC))
+                await emit(run_id, EventLevel.INFO, "cancel", "Run cancelled before start")
                 return
-            result = await session.execute(select(Task).where(Task.id == run.task_id))
-            task = result.scalar_one_or_none()
-            if task is None:
-                await _update_run(run_id, status=RunStatus.FAILED, error="Task not found")
-                return
-            spec = TaskSpec.model_validate_json(task.spec)
-            plan = Plan.model_validate_json(run.plan)
 
-        # Snapshot the spec on the run for column stability
-        await _update_run(run_id, run_spec=spec.model_dump_json())
+            await _update_run(run_id, status=RunStatus.RUNNING, started_at=datetime.now(UTC))
+            await emit(run_id, EventLevel.INFO, "start", "Run started")
 
-        pipeline_stats: dict = {
-            "raw_count": 0,
-            "verified_count": 0,
-            "valid_count": 0,
-            "deduped_count": 0,
-            "pages_fetched": 0,
-            "pages_failed": 0,
-            "hallucinated_count": 0,
-            "dropped_reasons": {},
-        }
+            # Load run and task details, snapshot the spec
+            async with async_session() as session:
+                from app.models import Task
 
-        # Step 1: Search
-        await emit(run_id, EventLevel.INFO, "search", f"Searching with {len(plan.queries)} queries")
-        search_results = await search_multiple(plan.queries, limit_per_query=10)
-        await emit(run_id, EventLevel.INFO, "search", f"Found {len(search_results)} candidate URLs")
+                run = await _get_run(session, run_id)
+                if run is None:
+                    return
+                result = await session.execute(select(Task).where(Task.id == run.task_id))
+                task = result.scalar_one_or_none()
+                if task is None:
+                    await _update_run(run_id, status=RunStatus.FAILED, error="Task not found")
+                    return
+                spec = TaskSpec.model_validate_json(task.spec)
+                from app.core.spec import enforce_required_fields
+
+                spec = enforce_required_fields(spec)
+                plan = Plan.model_validate_json(run.plan)
+
+            # Snapshot the spec on the run for column stability
+            await _update_run(run_id, run_spec=spec.model_dump_json())
+
+            pipeline_stats: dict = {
+                "raw_count": 0,
+                "verified_count": 0,
+                "valid_count": 0,
+                "deduped_count": 0,
+                "pages_fetched": 0,
+                "pages_failed": 0,
+                "hallucinated_count": 0,
+                "fields_nulled": 0,
+                "dropped_reasons": {},
+            }
+
+            # Step 1: Search
+            await emit(
+                run_id, EventLevel.INFO, "search", f"Searching with {len(plan.queries)} queries"
+            )
+            search_results = await search_multiple(
+                plan.queries, limit_per_query=10, region=spec.region
+            )
+            await emit(
+                run_id, EventLevel.INFO, "search", f"Found {len(search_results)} candidate URLs"
+            )
 
         if await _is_cancelled(run_id):
             await _update_run(run_id, status=RunStatus.CANCELLED, finished_at=datetime.now(UTC))
@@ -214,8 +246,16 @@ async def execute_run(run_id: str) -> None:
         all_verified_records: list[dict] = []
         pages_processed = 0
         total_fields = len(spec.fields)
+        warned_currency_mismatch = False
+        candidate_queue = list(search_results)
+        seen_urls = {sr.url for sr in search_results}
+        wave2_triggered = False
 
-        for sr in search_results:
+        candidate_idx = 0
+        while candidate_idx < len(candidate_queue):
+            sr = candidate_queue[candidate_idx]
+            candidate_idx += 1
+
             if pages_processed >= plan.max_pages:
                 break
             if await _is_cancelled(run_id):
@@ -254,31 +294,49 @@ async def execute_run(run_id: str) -> None:
             result = await fetch_page(sr.url)
 
             if isinstance(result, FetchError):
-                pipeline_stats["pages_failed"] += 1
-                pipeline_stats["dropped_reasons"]["fetch_failed"] = (
-                    pipeline_stats["dropped_reasons"].get("fetch_failed", 0) + 1
-                )
-                async with async_session() as session:
-                    source = Source(
-                        run_id=run_id,
-                        url=sr.url,
-                        domain=result.domain,
-                        status=SourceStatus.FAILED,
-                        http_status=result.http_status,
-                        reason=result.reason,
+                # Provider-supplied fallback if technical failure occurred
+                if sr.snippet and len(sr.snippet.strip()) >= 50:
+                    await emit(
+                        run_id,
+                        EventLevel.INFO,
+                        "fetch",
+                        f"Direct fetch failed ({result.reason}); using provider snippet for {sr.url}",
                     )
-                    session.add(source)
-                    await session.commit()
-                await emit(run_id, EventLevel.WARN, "fetch", f"Failed: {sr.url} — {result.reason}")
-                continue
+                    source_status = SourceStatus.VIA_SEARCH_PROVIDER
+                    page_text = sr.snippet.strip()
+                    page_url = sr.url
+                else:
+                    pipeline_stats["pages_failed"] += 1
+                    pipeline_stats["dropped_reasons"]["fetch_failed"] = (
+                        pipeline_stats["dropped_reasons"].get("fetch_failed", 0) + 1
+                    )
+                    async with async_session() as session:
+                        source = Source(
+                            run_id=run_id,
+                            url=sr.url,
+                            domain=result.domain,
+                            status=SourceStatus.FAILED,
+                            http_status=result.http_status,
+                            reason=result.reason,
+                        )
+                        session.add(source)
+                        await session.commit()
+                    await emit(
+                        run_id, EventLevel.WARN, "fetch", f"Failed: {sr.url} — {result.reason}"
+                    )
+                    continue
+            else:
+                source_status = SourceStatus.FETCHED
+                page_text = result.text
+                page_url = result.url
+                pipeline_stats["pages_fetched"] += 1
+                await emit(run_id, EventLevel.INFO, "fetch", f"Fetched: {sr.url}")
 
-            pipeline_stats["pages_fetched"] += 1
             pages_processed += 1
-            await emit(run_id, EventLevel.INFO, "fetch", f"Fetched: {sr.url}")
 
             # Extract
             try:
-                raw_records = await extract_from_page(result.text, result.url, spec)
+                raw_records = await extract_from_page(page_text, page_url, spec)
             except Exception as exc:
                 await emit(
                     run_id, EventLevel.ERROR, "extract", f"Extraction error for {sr.url}: {exc}"
@@ -287,10 +345,14 @@ async def execute_run(run_id: str) -> None:
 
             pipeline_stats["raw_count"] += len(raw_records)
 
-            # Verify evidence
-            verified, hallucinated = verify_records(raw_records, result.text, result.url)
+            # Verify evidence and field-level grounding
+            field_types = {f.name: f.type for f in spec.fields}
+            verified, hallucinated, fields_nulled = verify_records(
+                raw_records, page_text, page_url, field_types=field_types
+            )
             pipeline_stats["hallucinated_count"] += hallucinated
             pipeline_stats["verified_count"] += len(verified)
+            pipeline_stats["fields_nulled"] = pipeline_stats.get("fields_nulled", 0) + fields_nulled
             if hallucinated > 0:
                 pipeline_stats["dropped_reasons"]["evidence_mismatch"] = (
                     pipeline_stats["dropped_reasons"].get("evidence_mismatch", 0) + hallucinated
@@ -301,9 +363,9 @@ async def execute_run(run_id: str) -> None:
                 source = Source(
                     run_id=run_id,
                     url=sr.url,
-                    domain=result.domain,
-                    status=SourceStatus.FETCHED,
-                    http_status=result.http_status,
+                    domain=urlparse(sr.url).hostname or "",
+                    status=source_status,
+                    http_status=getattr(result, "http_status", 200),
                     records_found=len(verified),
                 )
                 session.add(source)
@@ -328,6 +390,21 @@ async def execute_run(run_id: str) -> None:
                 # Deep-copy to avoid mutating the accumulated pool
                 pool_copy = [dict(r) for r in all_verified_records]
                 deduped_snapshot = _build_dataset(pool_copy, spec)
+
+                # Warn if any currency mismatches detected
+                cm_count = sum(
+                    1
+                    for r in pool_copy
+                    if any("currency_mismatch" in f for f in r.get("_flags", []))
+                )
+                if cm_count > 0 and not warned_currency_mismatch:
+                    await emit(
+                        run_id,
+                        EventLevel.WARN,
+                        "normalize",
+                        f"Detected {cm_count} currency mismatch(es) — nulled invalid values",
+                    )
+                    warned_currency_mismatch = True
 
                 # Count validation drops for stats
                 pipeline_stats["valid_count"] = len(
@@ -362,6 +439,39 @@ async def execute_run(run_id: str) -> None:
                     f"Target count {spec.target_count} reached",
                 )
                 break
+
+            # Second search wave if yield is below target and page budget remains
+            if candidate_idx == len(candidate_queue) and not wave2_triggered:
+                current_yield = pipeline_stats.get("deduped_count", 0)
+                if current_yield < min(10, spec.target_count) and pages_processed < plan.max_pages:
+                    wave2_triggered = True
+                    remaining_budget = plan.max_pages - pages_processed
+                    await emit(
+                        run_id,
+                        EventLevel.INFO,
+                        "search",
+                        f"Yield shortfall ({current_yield}/{spec.target_count} records). Launching second search wave (budget: {remaining_budget} pages)...",
+                    )
+                    topic = spec.title.strip() if spec.title and spec.title.strip() else spec.entity
+                    wave2_queries = [
+                        f"{topic} list 2026",
+                        f"top {topic} directory",
+                        f"best {topic} roundup",
+                    ]
+                    wave2_results = await search_multiple(
+                        wave2_queries, limit_per_query=8, region=spec.region
+                    )
+                    new_candidates = [r for r in wave2_results if r.url not in seen_urls]
+                    for r in new_candidates:
+                        seen_urls.add(r.url)
+                        candidate_queue.append(r)
+                    if new_candidates:
+                        await emit(
+                            run_id,
+                            EventLevel.INFO,
+                            "search",
+                            f"Second search wave added {len(new_candidates)} candidate URLs",
+                        )
 
         # Final pass: rebuild the dataset one last time for consistency
         if all_verified_records:

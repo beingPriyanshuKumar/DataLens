@@ -52,6 +52,19 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    """Add security headers to every response (OPS-001 / F-07)."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    content_type = response.headers.get("content-type", "")
+    if "application/json" in content_type:
+        response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    return response
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -76,7 +89,17 @@ async def llm_error_handler(_request, exc: LLMError):
     )
 
 
-from app.api import diagnostics, exports, records, reports, runs, stats, tasks  # noqa: E402
+from app.api import (  # noqa: E402
+    diagnostics,
+    exports,
+    policy,
+    records,
+    regions,
+    reports,
+    runs,
+    stats,
+    tasks,
+)
 
 app.include_router(tasks.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
@@ -85,3 +108,5 @@ app.include_router(exports.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(diagnostics.router, prefix="/api")
+app.include_router(regions.router, prefix="/api")
+app.include_router(policy.router, prefix="/api")

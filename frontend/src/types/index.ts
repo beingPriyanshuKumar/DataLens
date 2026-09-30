@@ -5,6 +5,51 @@ export interface FieldSpec {
   required: boolean;
 }
 
+export interface Region {
+  code: string;
+  name: string;
+  label?: string;
+  search_region?: string | null;
+  language_hint?: string | null;
+  currency_hint?: string | null;
+}
+
+export interface PolicyFacts {
+  user_agent: string;
+  honors_robots_txt: boolean;
+  blocked_categories: string[];
+  blocked_domains: string[];
+  per_domain_delay_seconds: number;
+  max_pages_per_run: number;
+  max_response_bytes: number;
+  max_concurrent_runs: number;
+}
+
+export interface LatestRunSummary {
+  id: string;
+  status: string;
+  started_at: string | null;
+  finished_at: string | null;
+  record_count: number;
+  error: string | null;
+}
+
+export interface TaskItem {
+  id: string;
+  title: string;
+  prompt: string;
+  region: string;
+  created_at: string;
+  run_count: number;
+  latest_run?: LatestRunSummary | null;
+  runs?: LatestRunSummary[];
+}
+
+export interface TaskListResponse {
+  items: TaskItem[];
+  total: number;
+}
+
 export interface TaskSpec {
   title: string;
   entity: string;
@@ -12,6 +57,7 @@ export interface TaskSpec {
   filters: Record<string, string>;
   key_fields: string[];
   target_count: number;
+  region?: string;
   source_hints: string[];
   assumptions: string[];
   clarification: string | null;

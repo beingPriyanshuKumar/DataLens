@@ -44,7 +44,10 @@ async def test_api_rate_limiter():
 
 
 @pytest.mark.asyncio
-async def test_api_rate_limiter_proxy_headers():
+async def test_api_rate_limiter_proxy_headers(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "trusted_proxies", "10.0.0.1")
     limiter = APIRateLimiter(requests_per_minute=5)
     mock_req = MagicMock()
     mock_req.client.host = "10.0.0.1"  # Internal proxy IP

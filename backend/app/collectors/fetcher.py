@@ -15,9 +15,15 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
-MAX_TEXT_CHARS = 12_000
-MIN_TEXT_CHARS = 200
+MAX_TEXT_CHARS = 32_000
+MIN_TEXT_CHARS = 80
 MAX_REDIRECTS = 3
+
+DEFAULT_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 
 @dataclass
@@ -60,9 +66,11 @@ async def _wait_for_domain(domain: str) -> None:
 
 
 def _extract_text(html: str, url: str) -> str | None:
-    """Extract main content text from HTML using trafilatura."""
+    """Extract main content text from HTML using trafilatura with fallback."""
     text = trafilatura.extract(html, url=url, include_links=False, include_tables=True)
-    if not text or len(text) < MIN_TEXT_CHARS:
+    if not text or len(text.strip()) < MIN_TEXT_CHARS:
+        text = trafilatura.html2txt(html)
+    if not text or len(text.strip()) < 50:
         return None
     return text[:MAX_TEXT_CHARS]
 
@@ -71,6 +79,7 @@ async def fetch_page(url: str) -> FetchedPage | FetchError:
     """Fetch a single page with rate limiting, concurrency control, and content extraction.
 
     Enforces SSRF validation on every redirect step to prevent open-redirect attacks.
+    Uses streaming chunk reads to cap memory usage (PERF-002).
     """
     domain = urlparse(url).hostname or ""
     sem = _get_semaphore()
@@ -85,18 +94,19 @@ async def fetch_page(url: str) -> FetchedPage | FetchError:
             try:
                 current_url = url
                 current_domain = domain
-                resp = None
 
                 async with httpx.AsyncClient(
                     timeout=15,
                     follow_redirects=False,
-                    headers={"User-Agent": USER_AGENT},
+                    headers=DEFAULT_HEADERS,
                 ) as client:
                     for _ in range(MAX_REDIRECTS + 1):
-                        resp = await client.get(current_url)
+                        req = client.build_request("GET", current_url)
+                        resp = await client.send(req, stream=True)
 
                         if resp.is_redirect:
                             location = resp.headers.get("location")
+                            await resp.aclose()
                             if not location:
                                 break
                             next_url = urljoin(current_url, location)
@@ -114,49 +124,60 @@ async def fetch_page(url: str) -> FetchedPage | FetchError:
                             current_url = next_url
                             current_domain = urlparse(next_url).hostname or current_domain
                             continue
-                        break
 
-                if resp is None:
-                    return FetchError(
-                        url=url, domain=domain, http_status=None, reason="No response"
-                    )
+                        # Not a redirect: process the streamed body
+                        try:
+                            if resp.status_code >= 400:
+                                await resp.aclose()
+                                if resp.status_code >= 500 and attempt < max_retries:
+                                    await asyncio.sleep(2**attempt)
+                                    break
+                                return FetchError(
+                                    url=current_url,
+                                    domain=current_domain,
+                                    http_status=resp.status_code,
+                                    reason=f"HTTP {resp.status_code}",
+                                )
 
-                content_type = resp.headers.get("content-type", "")
-                if "text/html" not in content_type:
-                    return FetchError(
-                        url=current_url,
-                        domain=current_domain,
-                        http_status=resp.status_code,
-                        reason=f"Not HTML: {content_type}",
-                    )
+                            content_type = resp.headers.get("content-type", "")
+                            if "text/html" not in content_type:
+                                await resp.aclose()
+                                return FetchError(
+                                    url=current_url,
+                                    domain=current_domain,
+                                    http_status=resp.status_code,
+                                    reason=f"Not HTML: {content_type}",
+                                )
 
-                if resp.status_code >= 400:
-                    if resp.status_code >= 500 and attempt < max_retries:
-                        await asyncio.sleep(2**attempt)
-                        continue
-                    return FetchError(
-                        url=current_url,
-                        domain=current_domain,
-                        http_status=resp.status_code,
-                        reason=f"HTTP {resp.status_code}",
-                    )
+                            chunks: list[bytes] = []
+                            total_bytes = 0
+                            async for chunk in resp.aiter_bytes():
+                                total_bytes += len(chunk)
+                                chunks.append(chunk)
+                                if total_bytes >= MAX_RESPONSE_BYTES:
+                                    break
 
-                html = resp.text[:MAX_RESPONSE_BYTES]
-                text = _extract_text(html, current_url)
-                if text is None:
-                    return FetchError(
-                        url=current_url,
-                        domain=current_domain,
-                        http_status=resp.status_code,
-                        reason="Insufficient text content after extraction",
-                    )
+                            encoding = resp.encoding or "utf-8"
+                            raw_bytes = b"".join(chunks)
+                            html = raw_bytes.decode(encoding, errors="replace")
+                        finally:
+                            await resp.aclose()
 
-                return FetchedPage(
-                    url=current_url,
-                    domain=current_domain,
-                    http_status=resp.status_code,
-                    text=text,
-                )
+                        text = _extract_text(html, current_url)
+                        if text is None:
+                            return FetchError(
+                                url=current_url,
+                                domain=current_domain,
+                                http_status=resp.status_code,
+                                reason="Insufficient text content after extraction",
+                            )
+
+                        return FetchedPage(
+                            url=current_url,
+                            domain=current_domain,
+                            http_status=resp.status_code,
+                            text=text,
+                        )
 
             except TimeoutError:
                 last_error = "Timeout"

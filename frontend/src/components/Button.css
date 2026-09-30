@@ -108,3 +108,9 @@
   background-color: var(--color-surface);
   color: var(--color-ink);
 }
+
+/* Small Size */
+.button--small {
+  padding: 6px 14px;
+  font-size: 11px;
+}

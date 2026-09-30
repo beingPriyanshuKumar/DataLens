@@ -86,7 +86,7 @@ async def _search_tavily(query: str, limit: int = 10) -> list[SearchResult]:
 # ---------------------------------------------------------------------------
 
 
-async def _search_ddg(query: str, limit: int = 10) -> list[SearchResult]:
+async def _search_ddg(query: str, limit: int = 10, region: str | None = None) -> list[SearchResult]:
     """Search via DuckDuckGo (no API key required)."""
     import asyncio
 
@@ -99,8 +99,11 @@ async def _search_ddg(query: str, limit: int = 10) -> list[SearchResult]:
                 from duckduckgo_search import DDGS  # type: ignore
 
             def _do_search() -> list[dict]:
+                kwargs: dict = {"max_results": limit}
+                if region and region.upper() != "GLOBAL":
+                    kwargs["region"] = f"{region.lower()}-en"
                 with DDGS() as ddgs:
-                    return list(ddgs.text(query, max_results=limit))
+                    return list(ddgs.text(query, **kwargs))
 
             raw = await asyncio.to_thread(_do_search)
             if raw:
@@ -143,15 +146,17 @@ async def _search_ddg(query: str, limit: int = 10) -> list[SearchResult]:
 # ---------------------------------------------------------------------------
 
 
-async def search(query: str, limit: int = 10) -> list[SearchResult]:
+async def search(query: str, limit: int = 10, region: str | None = None) -> list[SearchResult]:
     """Search using the configured provider."""
     provider = settings.get_search_provider()
     if provider == "tavily":
         return await _search_tavily(query, limit)
-    return await _search_ddg(query, limit)
+    return await _search_ddg(query, limit, region=region)
 
 
-async def search_multiple(queries: list[str], limit_per_query: int = 10) -> list[SearchResult]:
+async def search_multiple(
+    queries: list[str], limit_per_query: int = 10, region: str | None = None
+) -> list[SearchResult]:
     """Run multiple search queries and deduplicate across all results."""
     import asyncio
 
@@ -161,7 +166,7 @@ async def search_multiple(queries: list[str], limit_per_query: int = 10) -> list
     for idx, query in enumerate(queries):
         if idx > 0 and settings.get_search_provider() == "ddg":
             await asyncio.sleep(1.0)  # Pacing between DDG queries to prevent IP throttling
-        results = await search(query, limit=limit_per_query)
+        results = await search(query, limit=limit_per_query, region=region)
         for r in results:
             if r.url not in seen_urls:
                 seen_urls.add(r.url)

@@ -14,13 +14,36 @@ Rules:
 - Do NOT include a source URL field — provenance is tracked separately.
 - Prefer fewer, higher-quality fields over many speculative ones.
 - Field types: str, int, float, bool, date, url, email.
+- Never bake a currency into a field name unless the user asked for that currency; use a numeric price-style field plus a currency field (e.g. price and currency, not price_usd).
 - Always mark truly identifying fields as required=true."""
 
 
-async def parse_prompt(prompt: str) -> TaskSpec:
+def enforce_required_fields(spec: TaskSpec) -> TaskSpec:
+    """Enforce that at most key fields (maximum 3) are required; others remain optional."""
+    key_set = set(spec.key_fields[:3])
+    for f in spec.fields:
+        if f.name not in key_set:
+            f.required = False
+    return spec
+
+
+async def parse_prompt(prompt: str, region_code: str = "GLOBAL") -> TaskSpec:
     """Convert a natural-language prompt into a structured TaskSpec."""
-    return await generate_structured(
+    from app.regions import get_region
+
+    region = get_region(region_code)
+    user_prompt = prompt
+    if region.code != "GLOBAL":
+        user_prompt += (
+            f"\n\nContext Hint: Target search region is '{region.name}'. "
+            f"Prefer currency hint '{region.currency_hint}' and language hint '{region.language_hint}' "
+            "when not explicitly specified by user."
+        )
+
+    spec = await generate_structured(
         system=SPEC_SYSTEM_PROMPT,
-        user=prompt,
+        user=user_prompt,
         output_model=TaskSpec,
     )
+    spec.region = region.code
+    return enforce_required_fields(spec)
