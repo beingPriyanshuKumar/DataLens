@@ -6,7 +6,8 @@ PLANNER_SYSTEM_PROMPT = """You are a search query planner for a web data collect
 
 Rules for queries (produce 3 to 6):
 - Each query should approach the topic from a different angle.
-- One broad query, one with site-specific hints (e.g. mentioning specific well-known sites), one recency-focused (include the current year 2026 if time-sensitive), one long-tail specific query.
+- For enumeration tasks (requests containing 'list', 'find all', 'top', 'roundup', 'directory', 'database', etc.): generate queries specifically targeting aggregators, directories, roundups, and list databases (e.g. using terms like 'list of', 'directory', 'top', 'roundup', 'database', year, and region), plus at least one query with an alternative phrasing.
+- One broad query, one with site-specific hints (e.g. mentioning specific well-known sites or platforms), one recency-focused (include the current year 2026 if time-sensitive), one long-tail specific query.
 - Queries should be realistic web search queries that would find the data described in the spec.
 - Do NOT use "site:" operator — just mention the site name naturally.
 

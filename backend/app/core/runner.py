@@ -217,8 +217,15 @@ async def execute_run(run_id: str) -> None:
         pages_processed = 0
         total_fields = len(spec.fields)
         warned_currency_mismatch = False
+        candidate_queue = list(search_results)
+        seen_urls = {sr.url for sr in search_results}
+        wave2_triggered = False
 
-        for sr in search_results:
+        candidate_idx = 0
+        while candidate_idx < len(candidate_queue):
+            sr = candidate_queue[candidate_idx]
+            candidate_idx += 1
+
             if pages_processed >= plan.max_pages:
                 break
             if await _is_cancelled(run_id):
@@ -257,31 +264,49 @@ async def execute_run(run_id: str) -> None:
             result = await fetch_page(sr.url)
 
             if isinstance(result, FetchError):
-                pipeline_stats["pages_failed"] += 1
-                pipeline_stats["dropped_reasons"]["fetch_failed"] = (
-                    pipeline_stats["dropped_reasons"].get("fetch_failed", 0) + 1
-                )
-                async with async_session() as session:
-                    source = Source(
-                        run_id=run_id,
-                        url=sr.url,
-                        domain=result.domain,
-                        status=SourceStatus.FAILED,
-                        http_status=result.http_status,
-                        reason=result.reason,
+                # Provider-supplied fallback if technical failure occurred
+                if sr.snippet and len(sr.snippet.strip()) >= 50:
+                    await emit(
+                        run_id,
+                        EventLevel.INFO,
+                        "fetch",
+                        f"Direct fetch failed ({result.reason}); using provider snippet for {sr.url}",
                     )
-                    session.add(source)
-                    await session.commit()
-                await emit(run_id, EventLevel.WARN, "fetch", f"Failed: {sr.url} — {result.reason}")
-                continue
+                    source_status = SourceStatus.VIA_SEARCH_PROVIDER
+                    page_text = sr.snippet.strip()
+                    page_url = sr.url
+                else:
+                    pipeline_stats["pages_failed"] += 1
+                    pipeline_stats["dropped_reasons"]["fetch_failed"] = (
+                        pipeline_stats["dropped_reasons"].get("fetch_failed", 0) + 1
+                    )
+                    async with async_session() as session:
+                        source = Source(
+                            run_id=run_id,
+                            url=sr.url,
+                            domain=result.domain,
+                            status=SourceStatus.FAILED,
+                            http_status=result.http_status,
+                            reason=result.reason,
+                        )
+                        session.add(source)
+                        await session.commit()
+                    await emit(
+                        run_id, EventLevel.WARN, "fetch", f"Failed: {sr.url} — {result.reason}"
+                    )
+                    continue
+            else:
+                source_status = SourceStatus.FETCHED
+                page_text = result.text
+                page_url = result.url
+                pipeline_stats["pages_fetched"] += 1
+                await emit(run_id, EventLevel.INFO, "fetch", f"Fetched: {sr.url}")
 
-            pipeline_stats["pages_fetched"] += 1
             pages_processed += 1
-            await emit(run_id, EventLevel.INFO, "fetch", f"Fetched: {sr.url}")
 
             # Extract
             try:
-                raw_records = await extract_from_page(result.text, result.url, spec)
+                raw_records = await extract_from_page(page_text, page_url, spec)
             except Exception as exc:
                 await emit(
                     run_id, EventLevel.ERROR, "extract", f"Extraction error for {sr.url}: {exc}"
@@ -293,7 +318,7 @@ async def execute_run(run_id: str) -> None:
             # Verify evidence and field-level grounding
             field_types = {f.name: f.type for f in spec.fields}
             verified, hallucinated, fields_nulled = verify_records(
-                raw_records, result.text, result.url, field_types=field_types
+                raw_records, page_text, page_url, field_types=field_types
             )
             pipeline_stats["hallucinated_count"] += hallucinated
             pipeline_stats["verified_count"] += len(verified)
@@ -310,9 +335,9 @@ async def execute_run(run_id: str) -> None:
                 source = Source(
                     run_id=run_id,
                     url=sr.url,
-                    domain=result.domain,
-                    status=SourceStatus.FETCHED,
-                    http_status=result.http_status,
+                    domain=urlparse(sr.url).hostname or "",
+                    status=source_status,
+                    http_status=getattr(result, "http_status", 200),
                     records_found=len(verified),
                 )
                 session.add(source)
@@ -386,6 +411,36 @@ async def execute_run(run_id: str) -> None:
                     f"Target count {spec.target_count} reached",
                 )
                 break
+
+            # Second search wave if yield is below target and page budget remains
+            if candidate_idx == len(candidate_queue) and not wave2_triggered:
+                current_yield = pipeline_stats.get("deduped_count", 0)
+                if current_yield < min(10, spec.target_count) and pages_processed < plan.max_pages:
+                    wave2_triggered = True
+                    remaining_budget = plan.max_pages - pages_processed
+                    await emit(
+                        run_id,
+                        EventLevel.INFO,
+                        "search",
+                        f"Yield shortfall ({current_yield}/{spec.target_count} records). Launching second search wave (budget: {remaining_budget} pages)...",
+                    )
+                    wave2_queries = [
+                        f"{spec.entity} list directory 2026",
+                        f"top {spec.entity} database roundup",
+                        f"best {spec.entity} roundup",
+                    ]
+                    wave2_results = await search_multiple(wave2_queries, limit_per_query=8)
+                    new_candidates = [r for r in wave2_results if r.url not in seen_urls]
+                    for r in new_candidates:
+                        seen_urls.add(r.url)
+                        candidate_queue.append(r)
+                    if new_candidates:
+                        await emit(
+                            run_id,
+                            EventLevel.INFO,
+                            "search",
+                            f"Second search wave added {len(new_candidates)} candidate URLs",
+                        )
 
         # Final pass: rebuild the dataset one last time for consistency
         if all_verified_records:

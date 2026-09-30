@@ -54,12 +54,32 @@ def _build_extraction_wrapper(record_model: type[BaseModel]) -> type[BaseModel]:
     return create_model("ExtractionResult", records=(list[record_model], []))
 
 
-async def extract_from_page(
-    page_text: str,
+CHUNK_SIZE = 8_000
+CHUNK_OVERLAP = 500
+MAX_CHUNKS_PER_PAGE = 4
+
+
+def chunk_text(
+    text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP
+) -> list[str]:
+    """Split long text into overlapping chunks, bounded by max chunks per page."""
+    if len(text) <= chunk_size:
+        return [text]
+    chunks = []
+    start = 0
+    step = chunk_size - overlap
+    while start < len(text) and len(chunks) < MAX_CHUNKS_PER_PAGE:
+        chunks.append(text[start : start + chunk_size])
+        start += step
+    return chunks
+
+
+async def _extract_from_chunk(
+    chunk_text_data: str,
     source_url: str,
     spec: TaskSpec,
 ) -> list[dict]:
-    """Extract records from a single page using the LLM."""
+    """Extract records from a single chunk of page text."""
     record_model = _build_record_model(spec.fields)
     wrapper_model = _build_extraction_wrapper(record_model)
 
@@ -75,7 +95,7 @@ async def extract_from_page(
         f"Fields to extract:\n{field_desc}\n\n"
         f"Filters (skip records that don't match):\n{filters_desc}\n\n"
         f"Source URL: {source_url}\n\n"
-        f"<UNTRUSTED_PAGE_DATA>\n{page_text}\n</UNTRUSTED_PAGE_DATA>"
+        f"<UNTRUSTED_PAGE_DATA>\n{chunk_text_data}\n</UNTRUSTED_PAGE_DATA>"
     )
 
     result = await generate_structured(
@@ -86,6 +106,30 @@ async def extract_from_page(
     )
 
     return [r.model_dump() for r in result.records]
+
+
+async def extract_from_page(
+    page_text: str,
+    source_url: str,
+    spec: TaskSpec,
+) -> list[dict]:
+    """Extract records from a single page using the LLM, chunking long pages if needed."""
+    chunks = chunk_text(page_text)
+    if len(chunks) == 1:
+        return await _extract_from_chunk(chunks[0], source_url, spec)
+
+    all_records: list[dict] = []
+    seen_evidence: set[str] = set()
+    for chunk in chunks:
+        recs = await _extract_from_chunk(chunk, source_url, spec)
+        for r in recs:
+            ev = r.get("evidence", "").strip().lower()
+            if ev and ev in seen_evidence:
+                continue
+            if ev:
+                seen_evidence.add(ev)
+            all_records.append(r)
+    return all_records
 
 
 async def extract_from_pages(

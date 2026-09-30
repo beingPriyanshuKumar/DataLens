@@ -34,6 +34,7 @@ class SourceStatus(enum.StrEnum):
     BLOCKED_BY_ROBOTS = "blocked_by_robots"
     FAILED = "failed"
     SKIPPED = "skipped"
+    VIA_SEARCH_PROVIDER = "via_search_provider"
 
 
 class Task(SQLModel, table=True):

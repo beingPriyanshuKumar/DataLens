@@ -18,10 +18,20 @@ Rules:
 - Always mark truly identifying fields as required=true."""
 
 
+def enforce_required_fields(spec: TaskSpec) -> TaskSpec:
+    """Enforce that at most key fields (maximum 3) are required; others remain optional."""
+    key_set = set(spec.key_fields[:3])
+    for f in spec.fields:
+        if f.name not in key_set:
+            f.required = False
+    return spec
+
+
 async def parse_prompt(prompt: str) -> TaskSpec:
     """Convert a natural-language prompt into a structured TaskSpec."""
-    return await generate_structured(
+    spec = await generate_structured(
         system=SPEC_SYSTEM_PROMPT,
         user=prompt,
         output_model=TaskSpec,
     )
+    return enforce_required_fields(spec)
