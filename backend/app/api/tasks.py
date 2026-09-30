@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.planner import build_plan
+from app.core.rate_limit import api_limiter
 from app.core.runner import start_run
 from app.core.spec import parse_prompt
 from app.db import get_session
@@ -22,7 +23,8 @@ router = APIRouter(tags=["tasks"])
 
 
 @router.post("/tasks/preview")
-async def preview_task(req: PreviewRequest) -> PreviewResponse:
+async def preview_task(req: PreviewRequest, request: Request) -> PreviewResponse:
+    await api_limiter.check(request)
     spec = await parse_prompt(req.prompt)
     if spec.clarification:
         return PreviewResponse(spec=spec, plan=None)
@@ -33,8 +35,10 @@ async def preview_task(req: PreviewRequest) -> PreviewResponse:
 @router.post("/tasks")
 async def create_task(
     req: CreateTaskRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
+    await api_limiter.check(request)
     task = Task(
         prompt=req.prompt,
         spec=req.spec.model_dump_json(),

@@ -33,5 +33,5 @@ async def build_plan(spec: TaskSpec) -> Plan:
         user=f"Create a plan for this task:\n\n{spec_summary}",
         output_model=Plan,
     )
-    plan.max_pages = min(plan.max_pages, settings.max_pages_per_run)
+    plan.max_pages = max(1, min(plan.max_pages, settings.max_pages_per_run))
     return plan

@@ -80,7 +80,7 @@ async def extract_from_page(
         system=EXTRACT_SYSTEM_PROMPT,
         user=user_prompt,
         output_model=wrapper_model,
-        model=settings.extract_model,
+        model=settings.get_extract_model(),
     )
 
     return [r.model_dump() for r in result.records]

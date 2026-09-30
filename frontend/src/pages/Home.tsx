@@ -13,7 +13,8 @@ import StateBlock from "../components/StateBlock";
 import TemplateModal from "../components/TemplateModal";
 import PlanEditor from "../components/PlanEditor";
 import { HINGLISH_EXAMPLE } from "../templates";
-import { listTasks, previewTask, createTask, deleteTask, createRun, getPlatformStats } from "../api";
+import { listTasks, previewTask, createTask, deleteTask, createRun, getPlatformStats, getSystemDiagnostics } from "../api";
+import type { SystemDiagnostics } from "../api";
 import type { PreviewResponse, TaskSummary, PlatformStats } from "../types";
 import "./Home.css";
 
@@ -30,43 +31,7 @@ export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isCustomizingPlan, setIsCustomizingPlan] = useState(false);
-  const [previewData, setPreviewData] = useState<PreviewResponse | null>(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "demo") {
-      return {
-        spec: {
-          title: "Remote Machine Learning Engineer Openings",
-          entity: "job_posting",
-          fields: [
-            { name: "title", type: "str", description: "Job title", required: true },
-            { name: "company", type: "str", description: "Company name", required: true },
-            { name: "location", type: "str", description: "Remote or location", required: true },
-            { name: "posted_date", type: "date", description: "Date posted", required: false },
-          ],
-          filters: { remote: "true", max_age_days: "14" },
-          key_fields: ["title", "company"],
-          target_count: 30,
-          source_hints: ["lever.co", "greenhouse.io"],
-          assumptions: ["Only software engineering and ML roles", "English job postings only"],
-          clarification: null,
-        },
-        plan: {
-          queries: [
-            "remote machine learning engineer jobs 2026",
-            "site:greenhouse.io machine learning engineer remote",
-          ],
-          steps: [
-            { type: "search", description: "Search allowed job boards and careers pages" },
-            { type: "fetch", description: "Fetch permitted pages respecting robots.txt" },
-            { type: "extract", description: "Extract title, company, location, and dates" },
-            { type: "validate", description: "Validate verbatim source quotes on page" },
-            { type: "dedupe", description: "Deduplicate across multiple job boards" },
-          ],
-          max_pages: 20,
-        },
-      };
-    }
-    return null;
-  });
+  const [previewData, setPreviewData] = useState<PreviewResponse | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Queries
@@ -85,6 +50,32 @@ export default function Home() {
     queryFn: getPlatformStats,
     refetchInterval: 10000,
   });
+
+  const { data: sysDiag } = useQuery<SystemDiagnostics>({
+    queryKey: ["system-diagnostics"],
+    queryFn: getSystemDiagnostics,
+    refetchInterval: 60000,
+    retry: 1,
+  });
+
+  const llmOk = sysDiag?.llm?.ok !== false;
+  const searchFallback = sysDiag?.search?.provider === "ddg" && sysDiag?.search?.ok;
+  const [dismissedSearchBanner, setDismissedSearchBanner] = useState(() => {
+    try {
+      return localStorage.getItem("datalens_dismiss_ddg_notice") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const handleDismissSearchBanner = () => {
+    setDismissedSearchBanner(true);
+    try {
+      localStorage.setItem("datalens_dismiss_ddg_notice", "true");
+    } catch {
+      // ignore
+    }
+  };
 
   // Mutations
   const previewMutation = useMutation({
@@ -281,6 +272,88 @@ export default function Home() {
         {/* Row 1: Header */}
         <Header />
 
+        {/* Diagnostics Banners */}
+        {sysDiag && !llmOk && (
+          <div style={{
+            background: "linear-gradient(90deg, #dc2626 0%, #b91c1c 100%)",
+            color: "#fff",
+            padding: "14px 24px",
+            borderRadius: "8px",
+            margin: "0 24px 12px",
+            fontSize: "14px",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+          }}>
+            <span style={{ fontSize: "18px" }}>⚠</span>
+            <span>
+              No working LLM configured. Set{" "}
+              <code style={{ background: "rgba(255,255,255,0.2)", padding: "2px 6px", borderRadius: "4px" }}>
+                {sysDiag.llm?.provider === "gemini" ? "GEMINI_API_KEY" : "ANTHROPIC_API_KEY"}
+              </code>{" "}
+              in <code style={{ background: "rgba(255,255,255,0.2)", padding: "2px 6px", borderRadius: "4px" }}>backend/.env</code>, then restart the backend.
+            </span>
+          </div>
+        )}
+        {/* Search Failure Banner */}
+        {sysDiag?.search && sysDiag.search.ok === false && (
+          <div style={{
+            background: "linear-gradient(90deg, #dc2626 0%, #b91c1c 100%)",
+            color: "#fff",
+            padding: "10px 24px",
+            borderRadius: "8px",
+            margin: "0 24px 12px",
+            fontSize: "13px",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+          }}>
+            <span style={{ fontSize: "16px" }}>⚠</span>
+            <span>Search error ({sysDiag.search.provider}): {sysDiag.search.error || "Search is currently unavailable."}</span>
+          </div>
+        )}
+
+        {/* Informational Keyless DDG Notice (Dismissable) */}
+        {searchFallback && !dismissedSearchBanner && sysDiag?.search?.ok && (
+          <div style={{
+            background: "rgba(245, 158, 11, 0.12)",
+            border: "1px solid rgba(245, 158, 11, 0.35)",
+            color: "#92400e",
+            padding: "8px 20px",
+            borderRadius: "8px",
+            margin: "0 24px 12px",
+            fontSize: "13px",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span>ℹ</span>
+              <span>Search is running via keyless DuckDuckGo. For higher volume searches, you can optionally configure a Tavily API key in <code>backend/.env</code>.</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleDismissSearchBanner}
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                color: "#92400e",
+                fontWeight: "bold",
+                fontSize: "14px",
+                padding: "2px 8px",
+                borderRadius: "4px",
+              }}
+              aria-label="Dismiss search notice"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Row 2: Hero */}
         <div className="grid-row home-hero">
           {/* Left Cell */}
@@ -325,7 +398,7 @@ export default function Home() {
                   <Button
                     type="submit"
                     variant="primary"
-                    disabled={!prompt.trim() || previewMutation.isPending}
+                    disabled={!prompt.trim() || previewMutation.isPending || !llmOk}
                   >
                     {previewMutation.isPending ? "PLANNING…" : "PREVIEW PLAN"}
                   </Button>
@@ -361,6 +434,29 @@ export default function Home() {
                 </div>
                 <span className="prompt-box__count">{prompt.length} CHARS</span>
               </div>
+              {previewMutation.isError && (
+                <div style={{
+                  padding: "10px 16px",
+                  marginTop: "12px",
+                  borderRadius: "6px",
+                  background: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  color: "#b91c1c",
+                  fontSize: "13px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}>
+                  <span>⚠ {previewMutation.error instanceof Error ? previewMutation.error.message : "Failed to generate plan. Please try again."}</span>
+                  <button
+                    type="button"
+                    onClick={() => previewMutation.reset()}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#b91c1c", fontWeight: "bold" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
             </form>
 
             {/* Example chips */}
@@ -501,7 +597,8 @@ export default function Home() {
                   disabled={
                     Boolean(previewData.spec.clarification) ||
                     createMutation.isPending ||
-                    !previewData.plan
+                    !previewData.plan ||
+                    !llmOk
                   }
                 >
                   {createMutation.isPending ? "STARTING…" : "RUN TASK"}

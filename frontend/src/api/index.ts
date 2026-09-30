@@ -11,7 +11,9 @@ import type {
   PlatformStats,
 } from "../types";
 
-const BASE = "http://localhost:8000/api";
+// Use relative paths — Vite dev proxy forwards /api to the backend.
+// For production, set VITE_API_BASE_URL in the build environment.
+const BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
@@ -127,4 +129,16 @@ export async function getReport(runId: string): Promise<import("../types").Trust
 
 export async function getDiagnostics(runId: string): Promise<import("../types").DiagnosticItem[]> {
   return request(`/runs/${runId}/diagnostics`);
+}
+
+// System diagnostics (health check for LLM, search, DB)
+export interface SystemDiagnostics {
+  database: { ok: boolean; error?: string };
+  llm: { provider: string; spec_model: string; extract_model: string; ok: boolean; error?: string | null };
+  search: { provider: string; ok: boolean; error?: string | null; note?: string | null };
+  version: string;
+}
+
+export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
+  return request("/diagnostics");
 }
