@@ -1,0 +1,46 @@
+/* StateBlock Styles */
+
+.state-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+  gap: var(--space-3);
+  min-height: 240px;
+  background-color: var(--color-surface);
+}
+
+.state-block__sparkle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.state-block--loading .state-block__text {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.05em;
+  color: var(--color-ink);
+}
+
+.state-block--empty .state-block__message {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-ink-muted);
+  max-width: 480px;
+}
+
+.state-block--error .state-block__message {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-red);
+  max-width: 520px;
+}
+
+.state-block__action {
+  margin-top: var(--space-2);
+}

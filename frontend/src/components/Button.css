@@ -1,0 +1,110 @@
+/* Button Styles */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--motion-fast);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Primary */
+.button--primary {
+  background-color: var(--color-ink);
+  color: var(--color-surface);
+  border: var(--border);
+  border-radius: var(--radius-pill);
+  padding: 14px var(--space-4);
+  gap: var(--space-2);
+}
+
+.button--primary:hover:not(:disabled) {
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  border: var(--border);
+}
+
+.button--primary:hover:not(:disabled) .button__arrow {
+  transform: translateX(2px);
+}
+
+.button__arrow {
+  display: inline-block;
+  transition: transform var(--motion-fast);
+}
+
+/* Secondary */
+.button--secondary {
+  background-color: transparent;
+  color: var(--color-ink);
+  border: var(--border);
+  border-radius: var(--radius-pill);
+  padding: 14px var(--space-4);
+  gap: var(--space-2);
+}
+
+.button--secondary:hover:not(:disabled) {
+  background-color: var(--color-hover);
+}
+
+/* Ghost */
+.button--ghost {
+  background-color: transparent;
+  color: var(--color-ink);
+  border: none;
+  padding: var(--space-2) var(--space-3);
+  gap: var(--space-2);
+}
+
+.button--ghost:hover:not(:disabled) {
+  color: var(--color-ink-muted);
+}
+
+.button--ghost:hover:not(:disabled) .button__arrow {
+  transform: translateX(2px);
+}
+
+/* Danger */
+.button--danger {
+  background-color: transparent;
+  color: var(--color-red);
+  border: 1px solid var(--color-red);
+  border-radius: var(--radius-pill);
+  padding: 14px var(--space-4);
+  gap: var(--space-2);
+}
+
+.button--danger:hover:not(:disabled) {
+  background-color: var(--color-red);
+  color: var(--color-surface);
+}
+
+/* Circle */
+.button--circle {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-ink);
+  color: var(--color-surface);
+  border: var(--border);
+  padding: 0;
+}
+
+.button--circle:hover:not(:disabled) {
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+}

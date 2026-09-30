@@ -1,0 +1,37 @@
+:root {
+  /* Colors */
+  --color-backdrop: #B9C4C1;
+  --color-surface: #FFFFFF;
+  --color-ink: #0B0B0B;
+  --color-ink-muted: #5C5C5C;
+  --color-line: #0B0B0B;
+  --color-line-soft: rgba(11, 11, 11, 0.15);
+  --color-red: #EF3E32;
+  --color-blue: #5B97B4;
+  --color-blue-pale: #D0E1E9;
+  --color-hover: #EEF3F5;
+
+  /* Typography */
+  --font-display: "Space Grotesk Variable", "Space Grotesk", system-ui, -apple-system, sans-serif;
+  --font-body: "Inter Variable", "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Spacing Scale (8px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  --space-6: 48px;
+  --space-7: 64px;
+
+  /* Borders */
+  --border: 1px solid var(--color-line);
+  --border-soft: 1px solid var(--color-line-soft);
+
+  /* Radius */
+  --radius-pill: 999px;
+
+  /* Motion */
+  --motion-fast: 120ms ease;
+}

@@ -8,6 +8,7 @@ import type {
   TaskSpec,
   Plan,
   TaskSummary,
+  PlatformStats,
 } from "../types";
 
 const BASE = "http://localhost:8000/api";
@@ -114,4 +115,8 @@ export function createEventSource(
   return new EventSource(
     `${BASE}/runs/${runId}/events?after=${afterId}`
   );
+}
+
+export async function getPlatformStats(): Promise<PlatformStats> {
+  return request("/stats");
 }

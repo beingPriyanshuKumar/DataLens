@@ -1,19 +1,17 @@
-import { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import type { CSSProperties } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  Play,
-  Square,
-  Download,
-  ExternalLink,
-  Database,
-  Globe,
-  History,
-  Activity,
-  ChevronDown,
-  X,
-} from "lucide-react";
+import Header from "../components/Header";
+import Button from "../components/Button";
+import StatusPill from "../components/StatusPill";
+import StatStrip, { type StatItem } from "../components/StatStrip";
+import Tabs, { type TabItem } from "../components/Tabs";
+import DataTable, { type Column } from "../components/DataTable";
+import ConfidenceBar from "../components/ConfidenceBar";
+import Drawer from "../components/Drawer";
+import EventLog from "../components/EventLog";
+import StateBlock from "../components/StateBlock";
 import {
   getTask,
   getRun,
@@ -27,29 +25,43 @@ import {
 import { useRunEvents } from "../hooks/useRunEvents";
 import type {
   RecordDetail,
-  RecordWithEvidence,
   RunStats,
   SourceDetail,
 } from "../types";
-import StatusBadge from "../components/StatusBadge";
-import ConfidenceBar from "../components/ConfidenceBar";
-import { Spinner, EmptyState, ErrorState } from "../components/Shared";
+import "./TaskDetail.css";
 
-const TERMINAL = new Set(["completed", "failed", "cancelled"]);
+const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
-type Tab = "progress" | "results" | "sources" | "history";
+const TABS: TabItem[] = [
+  { id: "progress", label: "PROGRESS" },
+  { id: "results", label: "RESULTS" },
+  { id: "sources", label: "SOURCES" },
+  { id: "history", label: "HISTORY" },
+];
 
 export default function TaskDetail() {
   const { taskId } = useParams<{ taskId: string }>();
-  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<Tab>("progress");
-  const [selectedRecord, setSelectedRecord] = useState<RecordWithEvidence | null>(null);
+
+  const tab = searchParams.get("tab") || "progress";
+  const setTab = (newTab: string) => {
+    setSearchParams({ tab: newTab });
+  };
+
+  // State
+  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [minConfidence, setMinConfidence] = useState<number>(0);
   const [exportOpen, setExportOpen] = useState(false);
+  const [sortColumn, setSortColumn] = useState<string | undefined>(undefined);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [sourceFilter, setSourceFilter] = useState<string>("ALL");
+  const [activeRunIdOverride, setActiveRunIdOverride] = useState<string | null>(null);
 
+  // Queries
   const taskQuery = useQuery({
     queryKey: ["task", taskId],
     queryFn: () => getTask(taskId!),
@@ -57,496 +69,614 @@ export default function TaskDetail() {
   });
 
   const latestRun = taskQuery.data?.runs?.[0];
-  const latestRunId = latestRun?.id;
-  const isActive = !!latestRun && !TERMINAL.has(latestRun.status);
+  const activeRunId = activeRunIdOverride || latestRun?.id;
+  const isActive = !!latestRun && !TERMINAL_STATUSES.has(latestRun.status);
 
   const runQuery = useQuery({
-    queryKey: ["run", latestRunId],
-    queryFn: () => getRun(latestRunId!),
-    enabled: !!latestRunId,
+    queryKey: ["run", activeRunId],
+    queryFn: () => getRun(activeRunId!),
+    enabled: !!activeRunId,
     refetchInterval: isActive ? 2000 : false,
   });
 
-  const { events } = useRunEvents(latestRunId, isActive);
-  const logEndRef = useRef<HTMLDivElement>(null);
+  const { events, isDone } = useRunEvents(activeRunId, isActive);
 
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [events]);
-
-  useEffect(() => {
-    if (!isActive && latestRunId) {
+    if (!isActive && activeRunId) {
       queryClient.invalidateQueries({ queryKey: ["task", taskId] });
-      queryClient.invalidateQueries({ queryKey: ["run", latestRunId] });
+      queryClient.invalidateQueries({ queryKey: ["run", activeRunId] });
     }
-  }, [isActive, latestRunId, taskId, queryClient]);
+  }, [isActive, activeRunId, taskId, queryClient]);
 
   const recordsQuery = useQuery({
-    queryKey: ["records", latestRunId, page, searchQuery, minConfidence],
+    queryKey: ["records", activeRunId, page, searchQuery, minConfidence, sortColumn, sortOrder],
     queryFn: () =>
-      getRecords(latestRunId!, {
+      getRecords(activeRunId!, {
         page,
         page_size: 20,
         q: searchQuery || undefined,
         min_confidence: minConfidence > 0 ? minConfidence : undefined,
+        sort: sortColumn,
+        order: sortOrder,
       }),
-    enabled: !!latestRunId && tab === "results",
+    enabled: !!activeRunId && tab === "results",
   });
 
   const sourcesQuery = useQuery({
-    queryKey: ["sources", latestRunId],
-    queryFn: () => getSources(latestRunId!),
-    enabled: !!latestRunId && tab === "sources",
+    queryKey: ["sources", activeRunId],
+    queryFn: () => getSources(activeRunId!),
+    enabled: !!activeRunId && tab === "sources",
   });
 
+  // Mutations
   const cancelMutation = useMutation({
-    mutationFn: () => cancelRun(latestRunId!),
+    mutationFn: () => cancelRun(activeRunId!),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["run", latestRunId] });
+      queryClient.invalidateQueries({ queryKey: ["run", activeRunId] });
       queryClient.invalidateQueries({ queryKey: ["task", taskId] });
     },
   });
 
   const rerunMutation = useMutation({
     mutationFn: () => createRun(taskId!),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+      setActiveRunIdOverride(data.run_id);
       setTab("progress");
     },
   });
 
-  const handleRecordClick = async (record: RecordDetail) => {
-    const detail = await getRecord(record.id);
-    setSelectedRecord(detail);
+  const drawerParam = searchParams.get("drawer") === "open";
+  const effectiveRecordId =
+    selectedRecordId ?? (drawerParam ? recordsQuery.data?.items?.[0]?.id ?? null : null);
+
+  const recordDetailQuery = useQuery({
+    queryKey: ["record", effectiveRecordId],
+    queryFn: () => getRecord(effectiveRecordId!),
+    enabled: !!effectiveRecordId,
+  });
+
+  const handleRecordClick = (rec: RecordDetail) => {
+    setSelectedRecordId(rec.id);
   };
 
-  if (taskQuery.isPending) return <div className="page-center"><Spinner size={32} /></div>;
-  if (taskQuery.isError) return <div className="page-center"><ErrorState message={taskQuery.error.message} /></div>;
+  const handleSort = (columnKey: string) => {
+    if (sortColumn === columnKey) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortColumn(columnKey);
+      setSortOrder("asc");
+    }
+    setPage(1);
+  };
+
+  if (taskQuery.isPending) {
+    return (
+      <div className="app-viewport">
+        <div className="app-frame">
+          <Header />
+          <StateBlock type="loading" message="LOADING TASK…" />
+        </div>
+      </div>
+    );
+  }
+
+  if (taskQuery.isError) {
+    return (
+      <div className="app-viewport">
+        <div className="app-frame">
+          <Header />
+          <StateBlock
+            type="error"
+            message={`Failed to load task: ${taskQuery.error.message}`}
+            onRetry={() => taskQuery.refetch()}
+          />
+        </div>
+      </div>
+    );
+  }
 
   const task = taskQuery.data;
-  const run = runQuery.data;
-  const stats: RunStats = run?.stats ?? {};
+  const currentRun = runQuery.data;
+  const stats: RunStats = currentRun?.stats ?? latestRun?.stats ?? {};
+  const currentStatus = currentRun?.status ?? latestRun?.status ?? "queued";
   const fields = task.spec.fields;
 
-  return (
-    <div className="task-detail">
-      <div className="task-detail__header">
-        <button className="btn btn--ghost" onClick={() => navigate("/")}>
-          <ArrowLeft size={16} /> Back
-        </button>
-        <div className="task-detail__title-row">
-          <h1>{task.spec.title}</h1>
-          {run && <StatusBadge status={run.status} />}
+  // Funnel Stat Items
+  const funnelStats: StatItem[] = [
+    {
+      id: "raw",
+      value: stats.raw_count ?? 0,
+      label: "Raw",
+    },
+    {
+      id: "verified",
+      value: stats.verified_count ?? 0,
+      label: "Verified",
+    },
+    {
+      id: "valid",
+      value: stats.valid_count ?? 0,
+      label: "Valid",
+    },
+    {
+      id: "deduped",
+      value: stats.deduped_count ?? 0,
+      label: "Deduped",
+      variant: "highlight",
+    },
+    {
+      id: "blocked",
+      value: stats.hallucinated_count ?? 0,
+      label: "Blocked as unsupported",
+      variant: "alert",
+    },
+  ];
+
+  // Progress Bar calculation
+  const targetCount = task.spec.target_count || 30;
+  const currentCount = stats.deduped_count ?? 0;
+  const progressPct =
+    currentStatus === "completed"
+      ? 100
+      : Math.min(95, Math.round((currentCount / targetCount) * 100));
+
+  // Dynamic Table Columns for Results
+  const resultColumns: Column<RecordDetail>[] = [
+    ...fields.map((f) => ({
+      key: f.name,
+      label: f.name.replace(/_/g, " "),
+      sortable: true,
+      render: (r: RecordDetail) => {
+        const val = r.data[f.name];
+        return (
+          <div className="data-table__cell-truncate" title={val != null ? String(val) : ""}>
+            {val != null ? String(val) : "—"}
+          </div>
+        );
+      },
+    })),
+    {
+      key: "confidence",
+      label: "CONFIDENCE",
+      sortable: true,
+      render: (r: RecordDetail) => <ConfidenceBar value={r.confidence} />,
+    },
+  ];
+
+  // Filtered Sources
+  const filteredSources = (sourcesQuery.data ?? []).filter((s) => {
+    if (sourceFilter === "FETCHED") return s.status === "fetched";
+    if (sourceFilter === "BLOCKED") return s.status.includes("blocked");
+    if (sourceFilter === "FAILED") return s.status === "failed";
+    return true;
+  });
+
+  const sourceColumns: Column<SourceDetail>[] = [
+    {
+      key: "domain",
+      label: "DOMAIN",
+      isMono: true,
+    },
+    {
+      key: "url",
+      label: "URL",
+      render: (s) => (
+        <a
+          href={s.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ textDecoration: "underline", color: "var(--color-ink)" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="data-table__cell-truncate" title={s.url}>
+            {s.url}
+          </div>
+        </a>
+      ),
+    },
+    {
+      key: "status",
+      label: "STATUS",
+      render: (s) => <StatusPill status={s.status} />,
+    },
+    {
+      key: "http_status",
+      label: "HTTP",
+      isMono: true,
+      render: (s) => <span>{s.http_status ?? "—"}</span>,
+    },
+    {
+      key: "reason",
+      label: "REASON",
+      render: (s) => (
+        <div className="data-table__cell-truncate" title={s.reason || ""}>
+          {s.reason || "—"}
         </div>
-        <p className="task-detail__prompt">{task.prompt}</p>
-        <div className="task-detail__actions">
-          {isActive && (
-            <button className="btn btn--danger" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>
-              <Square size={14} /> Cancel
-            </button>
-          )}
-          {!isActive && (
-            <button className="btn btn--primary" onClick={() => rerunMutation.mutate()} disabled={rerunMutation.isPending}>
-              <Play size={14} /> Re-run
-            </button>
-          )}
-          {!isActive && latestRunId && (
-            <div className="export-dropdown">
-              <button className="btn btn--outline" onClick={() => setExportOpen(!exportOpen)}>
-                <Download size={14} /> Export <ChevronDown size={12} />
-              </button>
-              {exportOpen && (
-                <div className="export-dropdown__menu">
-                  {(["csv", "json", "xlsx"] as const).map((fmt) => (
-                    <a
-                      key={fmt}
-                      href={getExportUrl(latestRunId, fmt)}
-                      className="export-dropdown__item"
-                      onClick={() => setExportOpen(false)}
-                    >
-                      {fmt.toUpperCase()}
-                    </a>
-                  ))}
-                </div>
+      ),
+    },
+    {
+      key: "records_found",
+      label: "RECORDS",
+      isMono: true,
+      render: (s) => <span>{s.records_found}</span>,
+    },
+  ];
+
+  // History Columns
+  const historyColumns: Column<typeof task.runs[0]>[] = [
+    {
+      key: "id",
+      label: "RUN",
+      isMono: true,
+      render: (r) => <span>{r.id.slice(0, 8)}…</span>,
+    },
+    {
+      key: "started_at",
+      label: "STARTED",
+      isMono: true,
+      render: (r) => (
+        <span>
+          {r.started_at
+            ? new Date(r.started_at).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "duration",
+      label: "DURATION",
+      isMono: true,
+      render: (r) => {
+        if (!r.started_at || !r.finished_at) return <span>—</span>;
+        const diffMs =
+          new Date(r.finished_at).getTime() - new Date(r.started_at).getTime();
+        const sec = Math.max(0, Math.round(diffMs / 1000));
+        return <span>{sec}s</span>;
+      },
+    },
+    {
+      key: "status",
+      label: "STATUS",
+      render: (r) => <StatusPill status={r.status} />,
+    },
+    {
+      key: "funnel",
+      label: "RAW → DEDUPED",
+      isMono: true,
+      render: (r) => {
+        const raw = r.stats?.raw_count ?? 0;
+        const deduped = r.stats?.deduped_count ?? 0;
+        return <span>{`${raw} → ${deduped}`}</span>;
+      },
+    },
+    {
+      key: "actions",
+      label: "ACTIONS",
+      render: (r) => (
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setActiveRunIdOverride(r.id);
+            setTab("results");
+          }}
+          aria-label={`Open run ${r.id.slice(0, 8)}`}
+        >
+          OPEN ↗
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <div className="app-viewport">
+      <div className="app-frame">
+        {/* Row 1: Header */}
+        <Header />
+
+        {/* Row 2: Title Row */}
+        <div className="task-title-row">
+          <div className="task-title-row__header">
+            <div>
+              <h1 className="task-title-row__title">
+                {task.spec.title || "Task Details"}
+              </h1>
+            </div>
+            <div className="task-title-row__actions">
+              <StatusPill status={currentStatus} />
+              {currentStatus === "running" || currentStatus === "queued" ? (
+                <Button
+                  variant="danger"
+                  onClick={() => cancelMutation.mutate()}
+                  disabled={cancelMutation.isPending}
+                >
+                  {cancelMutation.isPending ? "CANCELLING…" : "CANCEL RUN"}
+                </Button>
+              ) : currentStatus === "cancelling" ? (
+                <Button variant="danger" disabled>
+                  CANCELLING…
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  onClick={() => rerunMutation.mutate()}
+                  disabled={rerunMutation.isPending}
+                >
+                  {rerunMutation.isPending ? "STARTING…" : "RE-RUN"}
+                </Button>
               )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-      <nav className="tabs">
-        {(["progress", "results", "sources", "history"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            className={`tabs__tab ${tab === t ? "tabs__tab--active" : ""}`}
-            onClick={() => setTab(t)}
+          <div
+            className="task-title-row__prompt-wrapper"
+            onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                setIsPromptExpanded(!isPromptExpanded);
+              }
+            }}
           >
-            {t === "progress" && <Activity size={14} />}
-            {t === "results" && <Database size={14} />}
-            {t === "sources" && <Globe size={14} />}
-            {t === "history" && <History size={14} />}
-            {t.charAt(0).toUpperCase() + t.slice(1)}
-          </button>
-        ))}
-      </nav>
-
-      <div className="tab-content">
-        {tab === "progress" && (
-          <ProgressTab stats={stats} events={events} logEndRef={logEndRef} isActive={isActive} run={run} />
-        )}
-        {tab === "results" && (
-          <ResultsTab
-            recordsQuery={recordsQuery}
-            fields={fields}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            minConfidence={minConfidence}
-            setMinConfidence={setMinConfidence}
-            page={page}
-            setPage={setPage}
-            onRecordClick={handleRecordClick}
-          />
-        )}
-        {tab === "sources" && <SourcesTab sourcesQuery={sourcesQuery} />}
-        {tab === "history" && <HistoryTab runs={task.runs} />}
-      </div>
-
-      {selectedRecord && (
-        <RecordDrawer record={selectedRecord} onClose={() => setSelectedRecord(null)} />
-      )}
-    </div>
-  );
-}
-
-function ProgressTab({
-  stats,
-  events,
-  logEndRef,
-  isActive,
-  run,
-}: {
-  stats: RunStats;
-  events: { level: string; step: string; message: string; created_at: string }[];
-  logEndRef: React.RefObject<HTMLDivElement | null>;
-  isActive: boolean;
-  run: { status: string; error?: string | null } | undefined;
-}) {
-  const funnel = [
-    { label: "Raw", value: stats.raw_count ?? 0 },
-    { label: "Verified", value: stats.verified_count ?? 0 },
-    { label: "Valid", value: stats.valid_count ?? 0 },
-    { label: "Final", value: stats.deduped_count ?? 0 },
-  ];
-  const maxVal = Math.max(...funnel.map((f) => f.value), 1);
-
-  return (
-    <div className="progress-tab">
-      <div className="funnel">
-        <h3>Data Funnel</h3>
-        <div className="funnel__bars">
-          {funnel.map((f) => (
-            <div key={f.label} className="funnel__item">
-              <span className="funnel__label">{f.label}</span>
-              <div className="funnel__bar-track">
-                <div
-                  className="funnel__bar-fill"
-                  style={{ width: `${(f.value / maxVal) * 100}%` }}
-                />
-              </div>
-              <span className="funnel__value">{f.value}</span>
-            </div>
-          ))}
-        </div>
-        <div className="funnel__meta">
-          <span>📄 Pages fetched: {stats.pages_fetched ?? 0}</span>
-          <span>❌ Pages failed: {stats.pages_failed ?? 0}</span>
-          <span>🚫 Hallucinated dropped: {stats.hallucinated_count ?? 0}</span>
-        </div>
-      </div>
-
-      {run?.error && (
-        <div className="error-banner">
-          <strong>Error:</strong> {run.error}
-        </div>
-      )}
-
-      <div className="event-log">
-        <h3>
-          Live Log
-          {isActive && <span className="event-log__live-dot" />}
-        </h3>
-        <div className="event-log__entries">
-          {events.map((e, i) => (
-            <div key={i} className={`event-log__entry event-log__entry--${e.level}`}>
-              <span className="event-log__time">
-                {new Date(e.created_at).toLocaleTimeString()}
-              </span>
-              <span className="event-log__step">{e.step}</span>
-              <span className="event-log__msg">{e.message}</span>
-            </div>
-          ))}
-          <div ref={logEndRef} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ResultsTab({
-  recordsQuery,
-  fields,
-  searchQuery,
-  setSearchQuery,
-  minConfidence,
-  setMinConfidence,
-  page,
-  setPage,
-  onRecordClick,
-}: {
-  recordsQuery: ReturnType<typeof useQuery<Awaited<ReturnType<typeof getRecords>>>>;
-  fields: { name: string; type: string }[];
-  searchQuery: string;
-  setSearchQuery: (v: string) => void;
-  minConfidence: number;
-  setMinConfidence: (v: number) => void;
-  page: number;
-  setPage: (v: number) => void;
-  onRecordClick: (r: RecordDetail) => void;
-}) {
-  return (
-    <div className="results-tab">
-      <div className="results-tab__controls">
-        <div className="search-input">
-          <input
-            type="text"
-            placeholder="Search records..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setPage(1);
-            }}
-          />
-        </div>
-        <div className="confidence-filter">
-          <label>Min confidence: {Math.round(minConfidence * 100)}%</label>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={minConfidence}
-            onChange={(e) => {
-              setMinConfidence(Number(e.target.value));
-              setPage(1);
-            }}
-          />
-        </div>
-      </div>
-
-      {recordsQuery.isPending && <Spinner />}
-      {recordsQuery.isError && <ErrorState message={recordsQuery.error.message} />}
-      {recordsQuery.isSuccess && recordsQuery.data.items.length === 0 && (
-        <EmptyState message="No records match your filters." />
-      )}
-      {recordsQuery.isSuccess && recordsQuery.data.items.length > 0 && (
-        <>
-          <div className="results-table-wrap">
-            <table className="results-table">
-              <thead>
-                <tr>
-                  {fields.slice(0, 5).map((f) => (
-                    <th key={f.name}>{f.name.replace(/_/g, " ")}</th>
-                  ))}
-                  <th>Confidence</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recordsQuery.data.items.map((r) => (
-                  <tr key={r.id} onClick={() => onRecordClick(r)} className="results-table__row">
-                    {fields.slice(0, 5).map((f) => (
-                      <td key={f.name}>
-                        {String(r.data[f.name] ?? "—")}
-                      </td>
-                    ))}
-                    <td>
-                      <ConfidenceBar value={r.confidence} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="pagination">
-            <button
-              className="btn btn--sm btn--outline"
-              disabled={page <= 1}
-              onClick={() => setPage(page - 1)}
+            <p
+              className={`task-title-row__prompt ${
+                isPromptExpanded ? "" : "task-title-row__prompt--clamped"
+              }`}
             >
-              Previous
-            </button>
-            <span>
-              Page {recordsQuery.data.page} of {recordsQuery.data.total_pages} ({recordsQuery.data.total} records)
+              {task.prompt}
+            </p>
+            <span className="task-title-row__prompt-toggle">
+              {isPromptExpanded ? "Show less ↑" : "Show full prompt ↓"}
             </span>
-            <button
-              className="btn btn--sm btn--outline"
-              disabled={page >= recordsQuery.data.total_pages}
-              onClick={() => setPage(page + 1)}
-            >
-              Next
-            </button>
           </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function SourcesTab({
-  sourcesQuery,
-}: {
-  sourcesQuery: ReturnType<typeof useQuery<SourceDetail[]>>;
-}) {
-  return (
-    <div className="sources-tab">
-      {sourcesQuery.isPending && <Spinner />}
-      {sourcesQuery.isError && <ErrorState message={sourcesQuery.error.message} />}
-      {sourcesQuery.isSuccess && sourcesQuery.data.length === 0 && (
-        <EmptyState message="No sources yet." />
-      )}
-      {sourcesQuery.isSuccess && sourcesQuery.data.length > 0 && (
-        <div className="results-table-wrap">
-          <table className="results-table">
-            <thead>
-              <tr>
-                <th>URL</th>
-                <th>Status</th>
-                <th>Records</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sourcesQuery.data.map((s) => (
-                <tr key={s.id}>
-                  <td>
-                    <a href={s.url} target="_blank" rel="noopener noreferrer" className="source-link">
-                      {s.domain || s.url.substring(0, 50)}
-                      <ExternalLink size={10} />
-                    </a>
-                  </td>
-                  <td><StatusBadge status={s.status} /></td>
-                  <td>{s.records_found}</td>
-                  <td className="source-reason">{s.reason || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function HistoryTab({
-  runs,
-}: {
-  runs: { id: string; status: string; stats: RunStats; started_at: string | null; finished_at: string | null }[];
-}) {
-  if (runs.length === 0) return <EmptyState message="No runs yet." />;
-
-  return (
-    <div className="history-tab">
-      <div className="results-table-wrap">
-        <table className="results-table">
-          <thead>
-            <tr>
-              <th>Run</th>
-              <th>Status</th>
-              <th>Records</th>
-              <th>Started</th>
-              <th>Finished</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((r, i) => (
-              <tr key={r.id}>
-                <td>#{runs.length - i}</td>
-                <td><StatusBadge status={r.status} /></td>
-                <td>{r.stats.deduped_count ?? 0}</td>
-                <td>{r.started_at ? new Date(r.started_at).toLocaleString() : "—"}</td>
-                <td>{r.finished_at ? new Date(r.finished_at).toLocaleString() : "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function RecordDrawer({
-  record,
-  onClose,
-}: {
-  record: RecordWithEvidence;
-  onClose: () => void;
-}) {
-  return (
-    <div className="drawer-overlay" onClick={onClose}>
-      <div className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer__header">
-          <h3>Record Detail</h3>
-          <button className="btn btn--icon btn--ghost" onClick={onClose}>
-            <X size={18} />
-          </button>
         </div>
 
-        <div className="drawer__content">
-          <div className="drawer__section">
-            <h4>Fields</h4>
-            <div className="drawer__fields">
-              {Object.entries(record.record.data).map(([key, value]) => (
-                <div key={key} className="drawer__field">
-                  <span className="drawer__field-name">{key.replace(/_/g, " ")}</span>
-                  <span className="drawer__field-value">{String(value ?? "—")}</span>
-                </div>
-              ))}
+        {/* Row 3: Tabs */}
+        <Tabs tabs={TABS} activeTab={tab} onChange={setTab} />
+
+        {/* Tab 1: PROGRESS */}
+        {tab === "progress" && (
+          <div className="progress-tab" id="panel-progress" role="tabpanel">
+            <StatStrip stats={funnelStats} ariaLive="polite" />
+            <div className="progress-bar-row">
+              <div
+                className="progress-bar-row__fill"
+                style={{ "--progress": `${progressPct}%` } as CSSProperties}
+              />
             </div>
-          </div>
 
-          <div className="drawer__section">
-            <h4>Confidence</h4>
-            <ConfidenceBar value={record.record.confidence} />
-          </div>
-
-          {record.record.flags.length > 0 && (
-            <div className="drawer__section">
-              <h4>Flags</h4>
-              <div className="drawer__flags">
-                {record.record.flags.map((f, i) => (
-                  <span key={i} className="flag-chip">{f}</span>
-                ))}
+            {currentStatus === "cancelling" && (
+              <div className="progress-tab__cancelling">
+                Cancelling after the current page finishes…
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="drawer__section">
-            <h4>Evidence ({record.evidence.length})</h4>
-            {record.evidence.map((ev) => (
-              <div key={ev.id} className="evidence-card">
-                <blockquote className="evidence-card__snippet">
-                  "{ev.snippet}"
-                </blockquote>
-                {ev.source_url && (
-                  <a href={ev.source_url} target="_blank" rel="noopener noreferrer" className="evidence-card__source">
-                    <ExternalLink size={12} />
-                    {new URL(ev.source_url).hostname}
-                  </a>
+            {currentRun?.error && (
+              <div className="progress-tab__error">
+                <strong>Error:</strong> {currentRun.error}
+              </div>
+            )}
+
+            <EventLog events={events} isLive={isActive && !isDone} />
+          </div>
+        )}
+
+        {/* Tab 2: RESULTS */}
+        {tab === "results" && (
+          <div className="results-tab" id="panel-results" role="tabpanel">
+            <div className="results-toolbar">
+              <div className="results-toolbar__left">
+                <div className="results-search">
+                  <input
+                    type="text"
+                    className="results-search__input"
+                    placeholder="Search records..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                  />
+                </div>
+
+                <div className="confidence-slider">
+                  <label className="confidence-slider__label">
+                    MIN CONFIDENCE:
+                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={minConfidence}
+                    className="confidence-slider__input"
+                    onChange={(e) => {
+                      setMinConfidence(Number(e.target.value));
+                      setPage(1);
+                    }}
+                  />
+                  <span className="confidence-slider__val">
+                    {minConfidence.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="results-toolbar__right">
+                <span className="results-count">
+                  {recordsQuery.data ? `${recordsQuery.data.total} RECORDS` : ""}
+                </span>
+
+                {activeRunId && (
+                  <div className="export-menu-wrapper">
+                    <Button
+                      variant="secondary"
+                      onClick={() => setExportOpen(!exportOpen)}
+                      aria-haspopup="true"
+                      aria-expanded={exportOpen}
+                    >
+                      EXPORT ↓
+                    </Button>
+                    {exportOpen && (
+                      <div className="export-menu">
+                        {(["csv", "json", "xlsx"] as const).map((fmt) => (
+                          <a
+                            key={fmt}
+                            href={getExportUrl(activeRunId, fmt)}
+                            className="export-menu__item"
+                            onClick={() => setExportOpen(false)}
+                          >
+                            {fmt.toUpperCase()}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-            ))}
+            </div>
+
+            {recordsQuery.isPending ? (
+              <StateBlock type="loading" message="LOADING RECORDS…" />
+            ) : recordsQuery.isError ? (
+              <StateBlock
+                type="error"
+                message={`Failed to load records: ${recordsQuery.error.message}`}
+                onRetry={() => recordsQuery.refetch()}
+              />
+            ) : recordsQuery.data.items.length === 0 ? (
+              <StateBlock
+                type="empty"
+                message="No records found. Filters might be too strict or permitted sources blocked."
+                actionLabel="VIEW SOURCES"
+                onAction={() => setTab("sources")}
+              />
+            ) : (
+              <>
+                <DataTable
+                  columns={resultColumns}
+                  data={recordsQuery.data.items}
+                  rowKey={(r) => r.id}
+                  sortColumn={sortColumn}
+                  sortOrder={sortOrder}
+                  onSort={handleSort}
+                  onRowClick={handleRecordClick}
+                />
+
+                <div className="table-pagination">
+                  <span className="table-pagination__info">
+                    PAGE {recordsQuery.data.page} OF {recordsQuery.data.total_pages || 1}
+                  </span>
+                  <div className="table-pagination__actions">
+                    <Button
+                      variant="ghost"
+                      disabled={page <= 1}
+                      onClick={() => setPage(page - 1)}
+                    >
+                      PREV
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      disabled={page >= recordsQuery.data.total_pages}
+                      onClick={() => setPage(page + 1)}
+                    >
+                      NEXT
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
-        </div>
+        )}
+
+        {/* Tab 3: SOURCES */}
+        {tab === "sources" && (
+          <div className="sources-tab" id="panel-sources" role="tabpanel">
+            <div className="sources-toolbar">
+              {(["ALL", "FETCHED", "BLOCKED", "FAILED"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  className={`sources-filter-btn ${
+                    sourceFilter === filter ? "sources-filter-btn--active" : ""
+                  }`}
+                  onClick={() => setSourceFilter(filter)}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+
+            {sourcesQuery.isPending ? (
+              <StateBlock type="loading" message="LOADING SOURCES…" />
+            ) : sourcesQuery.isError ? (
+              <StateBlock
+                type="error"
+                message={`Failed to load sources: ${sourcesQuery.error.message}`}
+                onRetry={() => sourcesQuery.refetch()}
+              />
+            ) : filteredSources.length === 0 ? (
+              <StateBlock
+                type="empty"
+                message={`No sources found for filter "${sourceFilter}".`}
+              />
+            ) : (
+              <DataTable
+                columns={sourceColumns}
+                data={filteredSources}
+                rowKey={(s) => s.id}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Tab 4: HISTORY */}
+        {tab === "history" && (
+          <div className="history-tab" id="panel-history" role="tabpanel">
+            <div className="history-toolbar">
+              <Button
+                variant="primary"
+                onClick={() => rerunMutation.mutate()}
+                disabled={rerunMutation.isPending}
+              >
+                {rerunMutation.isPending ? "STARTING…" : "RE-RUN"}
+              </Button>
+            </div>
+
+            {task.runs.length === 0 ? (
+              <StateBlock
+                type="empty"
+                message="No runs recorded yet for this task."
+              />
+            ) : (
+              <DataTable
+                columns={historyColumns}
+                data={task.runs}
+                rowKey={(r) => r.id}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Record Evidence Drawer */}
+        <Drawer
+          isOpen={Boolean(effectiveRecordId && recordDetailQuery.data)}
+          onClose={() => {
+            setSelectedRecordId(null);
+            if (drawerParam) {
+              const next = new URLSearchParams(searchParams);
+              next.delete("drawer");
+              setSearchParams(next);
+            }
+          }}
+          record={recordDetailQuery.data?.record ?? null}
+          evidence={recordDetailQuery.data?.evidence ?? []}
+          titleField={fields[0]?.name}
+        />
       </div>
     </div>
   );

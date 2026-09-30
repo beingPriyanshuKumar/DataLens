@@ -188,3 +188,23 @@ async def test_task_lifecycle_and_records(async_session=None):
         resp = await client.delete(f"/api/tasks/{task_id}")
         assert resp.status_code == 200
         assert resp.json() == {"deleted": True}
+
+
+@pytest.mark.asyncio
+async def test_stats_endpoint():
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.get("/api/stats")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "tasks" in data
+        assert "runs" in data
+        assert "records_verified" in data
+        assert "sources_checked" in data
+        assert "unsupported_records_blocked" in data
+        assert isinstance(data["tasks"], int)
+        assert isinstance(data["runs"], int)
+        assert isinstance(data["records_verified"], int)
+        assert isinstance(data["sources_checked"], int)
+        assert isinstance(data["unsupported_records_blocked"], int)

@@ -1,0 +1,90 @@
+/* StatusPill Styles */
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-pill);
+  padding: 6px 12px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.status-pill--queued {
+  background-color: transparent;
+  border: 1px solid var(--color-ink-muted);
+  color: var(--color-ink-muted);
+}
+
+.status-pill--running {
+  background-color: var(--color-blue-pale);
+  border: 1px solid var(--color-blue);
+  color: var(--color-ink);
+}
+
+.status-pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-blue);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .status-pill--running .status-pill__dot {
+    animation: status-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes status-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+}
+
+.status-pill--completed,
+.status-pill--fetched {
+  background-color: var(--color-ink);
+  border: var(--border);
+  color: var(--color-surface);
+}
+
+.status-pill--failed {
+  background-color: var(--color-red);
+  border: 1px solid var(--color-red);
+  color: var(--color-surface);
+}
+
+.status-pill--blocked {
+  background-color: transparent;
+  border: 1px solid var(--color-red);
+  color: var(--color-red);
+}
+
+.status-pill--cancelling {
+  background-color: var(--color-blue-pale);
+  border: 1px solid var(--color-blue);
+  color: var(--color-ink);
+}
+
+.status-pill--cancelled {
+  background-color: transparent;
+  border: var(--border);
+  color: var(--color-ink);
+}
+
+.status-pill--skipped {
+  background-color: transparent;
+  border: 1px solid var(--color-ink-muted);
+  color: var(--color-ink-muted);
+}

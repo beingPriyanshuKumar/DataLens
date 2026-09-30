@@ -1,0 +1,95 @@
+/* EventLog Styles */
+
+.event-log-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.event-log__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-4);
+  background-color: var(--color-surface);
+  border-bottom: var(--border);
+}
+
+.event-log__status {
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.event-log__status--live {
+  color: var(--color-blue);
+}
+
+.event-log__status--reconnecting {
+  color: var(--color-red);
+}
+
+.event-log__scroll {
+  max-height: 360px;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  background-color: var(--color-surface);
+  border: var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.event-log__empty {
+  color: var(--color-ink-muted);
+  font-style: italic;
+}
+
+.event-log__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  word-break: break-all;
+}
+
+.event-log__time {
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.event-log__level {
+  font-family: var(--font-body);
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.event-log__level--info {
+  background-color: var(--color-ink);
+  color: var(--color-surface);
+}
+
+.event-log__level--warn,
+.event-log__level--error {
+  background-color: var(--color-red);
+  color: var(--color-surface);
+}
+
+.event-log__message {
+  color: var(--color-ink);
+}

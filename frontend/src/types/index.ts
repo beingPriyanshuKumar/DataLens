@@ -126,3 +126,11 @@ export interface TaskDetail {
     finished_at: string | null;
   }[];
 }
+
+export interface PlatformStats {
+  tasks: number;
+  runs: number;
+  records_verified: number;
+  sources_checked: number;
+  unsupported_records_blocked: number;
+}

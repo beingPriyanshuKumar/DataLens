@@ -1,0 +1,59 @@
+/* Tabs Styles */
+
+.tabs-nav {
+  display: flex;
+  align-items: center;
+  border-bottom: var(--border);
+  background-color: var(--color-surface);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tabs-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs-nav__tab {
+  position: relative;
+  padding: var(--space-4) var(--space-4);
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-right: var(--border-soft);
+  white-space: nowrap;
+  transition: color var(--motion-fast);
+}
+
+.tabs-nav__tab:hover {
+  color: var(--color-ink);
+  background-color: var(--color-hover);
+}
+
+.tabs-nav__tab--active {
+  color: var(--color-ink);
+}
+
+.tabs-nav__tab--active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background-color: var(--color-ink);
+  z-index: 2;
+}
+
+@media (max-width: 719px) {
+  .tabs-nav__tab {
+    padding: var(--space-3) var(--space-3);
+  }
+}

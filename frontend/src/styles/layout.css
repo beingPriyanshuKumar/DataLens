@@ -1,0 +1,57 @@
+/* App Layout & Frame */
+
+.app-viewport {
+  min-height: 100vh;
+  background-color: var(--color-backdrop);
+  padding: var(--space-4);
+  display: flex;
+  justify-content: center;
+}
+
+.app-frame {
+  width: 100%;
+  max-width: 1440px;
+  background-color: var(--color-surface);
+  border: var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Rows and Cells System */
+.grid-row {
+  display: grid;
+  width: 100%;
+  border-bottom: var(--border);
+  background-color: var(--color-surface);
+}
+
+.grid-row:last-child {
+  border-bottom: none;
+}
+
+.grid-cell {
+  position: relative;
+  background-color: var(--color-surface);
+  border-right: var(--border);
+}
+
+.grid-cell:last-child {
+  border-right: none;
+}
+
+/* Responsive Rules */
+@media (max-width: 1023px) {
+  .app-viewport {
+    padding: var(--space-3);
+  }
+}
+
+@media (max-width: 719px) {
+  .app-viewport {
+    padding: 0;
+  }
+
+  .app-frame {
+    border: none;
+  }
+}

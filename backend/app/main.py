@@ -32,9 +32,10 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-from app.api import exports, records, runs, tasks  # noqa: E402
+from app.api import exports, records, runs, stats, tasks  # noqa: E402
 
 app.include_router(tasks.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
 app.include_router(records.router, prefix="/api")
 app.include_router(exports.router, prefix="/api")
+app.include_router(stats.router, prefix="/api")

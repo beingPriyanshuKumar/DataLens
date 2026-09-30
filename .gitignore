@@ -1,10 +1,37 @@
+# Environments & Local Config
 .env
 .venv/
+env/
+venv/
+
+# Python Cache & Build Artifacts
 __pycache__/
-*.pyc
-*.db
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Testing & Linting Caches
 .cache/
 .ruff_cache/
 .pytest_cache/
+
+# Databases & Local State
+*.db
+*.sqlite3
+
+# Node & Frontend Build
 node_modules/
-dist/
+frontend/dist/
+frontend/.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
