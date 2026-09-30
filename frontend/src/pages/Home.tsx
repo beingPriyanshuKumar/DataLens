@@ -10,6 +10,9 @@ import DataTable, { type Column } from "../components/DataTable";
 import SparkleIcon from "../components/SparkleIcon";
 import HeroArt from "../components/HeroArt";
 import StateBlock from "../components/StateBlock";
+import TemplateModal from "../components/TemplateModal";
+import PlanEditor from "../components/PlanEditor";
+import { HINGLISH_EXAMPLE } from "../templates";
 import { listTasks, previewTask, createTask, deleteTask, createRun, getPlatformStats } from "../api";
 import type { PreviewResponse, TaskSummary, PlatformStats } from "../types";
 import "./Home.css";
@@ -25,6 +28,8 @@ export default function Home() {
   const queryClient = useQueryClient();
 
   const [prompt, setPrompt] = useState("");
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [isCustomizingPlan, setIsCustomizingPlan] = useState(false);
   const [previewData, setPreviewData] = useState<PreviewResponse | null>(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "demo") {
       return {
@@ -324,6 +329,13 @@ export default function Home() {
                   >
                     {previewMutation.isPending ? "PLANNING…" : "PREVIEW PLAN"}
                   </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setIsTemplateModalOpen(true)}
+                  >
+                    BROWSE TEMPLATES ↗
+                  </Button>
                   <div
                     className="prompt-box__past-runs"
                     onClick={scrollToTasks}
@@ -353,6 +365,14 @@ export default function Home() {
 
             {/* Example chips */}
             <div className="home-hero__examples">
+              <button
+                type="button"
+                className="example-chip"
+                style={{ borderColor: "var(--color-accent, #2563eb)", color: "var(--color-accent, #2563eb)" }}
+                onClick={() => setPrompt(HINGLISH_EXAMPLE.prompt)}
+              >
+                ✨ Hinglish: ML jobs 20 LPA
+              </button>
               {EXAMPLE_PROMPTS.map((ex, i) => (
                 <button
                   key={i}
@@ -467,6 +487,14 @@ export default function Home() {
                 <Button variant="ghost" onClick={scrollToPrompt}>
                   EDIT PROMPT
                 </Button>
+                {previewData.plan && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => setIsCustomizingPlan(!isCustomizingPlan)}
+                  >
+                    {isCustomizingPlan ? "STANDARD VIEW" : "CUSTOMIZE PLAN & ESTIMATE ⚙"}
+                  </Button>
+                )}
                 <Button
                   variant="primary"
                   onClick={() => createMutation.mutate()}
@@ -488,7 +516,15 @@ export default function Home() {
               </div>
             )}
 
-            <div className="plan-review__grid">
+            {isCustomizingPlan && previewData.plan ? (
+              <PlanEditor
+                spec={previewData.spec}
+                plan={previewData.plan}
+                onSpecChange={(spec) => setPreviewData({ ...previewData, spec })}
+                onPlanChange={(plan) => setPreviewData({ ...previewData, plan })}
+              />
+            ) : (
+              <div className="plan-review__grid">
               {/* Cell 1: Schema */}
               <div className="plan-review__cell">
                 <span className="plan-review__cell-title">SCHEMA</span>
@@ -572,6 +608,7 @@ export default function Home() {
                 </ul>
               </div>
             </div>
+            )}
           </div>
         )}
 
@@ -608,6 +645,13 @@ export default function Home() {
             />
           )}
         </section>
+
+        {/* Template Browser Modal */}
+        <TemplateModal
+          isOpen={isTemplateModalOpen}
+          onClose={() => setIsTemplateModalOpen(false)}
+          onSelectPrompt={(selected) => setPrompt(selected)}
+        />
       </div>
     </div>
   );

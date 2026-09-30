@@ -1,3 +1,4 @@
+import json
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,9 +15,16 @@ async def emit(
     step: str,
     message: str,
     session: AsyncSession | None = None,
+    data: dict | None = None,
 ) -> None:
     """Persist a run event. Creates its own session if none provided."""
-    event = RunEvent(run_id=run_id, level=level, step=step, message=message)
+    event = RunEvent(
+        run_id=run_id,
+        level=level,
+        step=step,
+        message=message,
+        data=json.dumps(data) if data is not None else None,
+    )
 
     if session is not None:
         session.add(event)

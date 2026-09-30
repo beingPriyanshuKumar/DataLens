@@ -54,6 +54,7 @@ class Run(SQLModel, table=True):
     plan: str = Field(default="{}", sa_column=Column(Text))
     status: RunStatus = Field(default=RunStatus.QUEUED, sa_column=Column(Enum(RunStatus)))
     stats: str = Field(default="{}", sa_column=Column(Text))
+    run_spec: str = Field(default="{}", sa_column=Column(Text))
     error: str | None = Field(default=None, sa_column=Column(Text))
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -67,6 +68,7 @@ class RunEvent(SQLModel, table=True):
     level: EventLevel = Field(sa_column=Column(Enum(EventLevel)))
     step: str
     message: str = Field(sa_column=Column(Text))
+    data: str | None = Field(default=None, sa_column=Column(Text))
     created_at: datetime = Field(default_factory=_now)
 
 

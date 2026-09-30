@@ -10,8 +10,8 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.core.runner import start_run
 from app.db import async_session, get_session
-from app.models import Run, RunEvent, RunStatus, Source
-from app.schemas import RunDetail, SourceDetail
+from app.models import Run, RunEvent, RunStatus, Source, Task
+from app.schemas import RunDetail, SourceDetail, TaskSpec
 
 router = APIRouter(tags=["runs"])
 
@@ -38,6 +38,53 @@ async def get_run(
         started_at=run.started_at.isoformat() if run.started_at else None,
         finished_at=run.finished_at.isoformat() if run.finished_at else None,
     )
+
+
+@router.get("/runs/{run_id}/diagnostics")
+async def get_diagnostics(
+    run_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    """Return diagnostic messages for a run with low or zero results."""
+    from dataclasses import asdict
+
+    from app.core.diagnose import diagnose
+
+    run_result = await session.execute(select(Run).where(Run.id == run_id))
+    run = run_result.scalar_one_or_none()
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    stats = json.loads(run.stats) if run.stats else {}
+    deduped = stats.get("deduped_count", 0)
+
+    # Determine target count from run_spec or task spec
+    target_count = 30  # default
+    spec_json = run.run_spec if run.run_spec and run.run_spec != "{}" else None
+    if not spec_json:
+        task_result = await session.execute(select(Task).where(Task.id == run.task_id))
+        task = task_result.scalar_one_or_none()
+        if task:
+            spec_json = task.spec
+    if spec_json:
+        try:
+            spec = TaskSpec.model_validate_json(spec_json)
+            target_count = spec.target_count
+        except Exception:
+            pass
+
+    # Only run diagnostics if results < 50% of target
+    if deduped >= target_count * 0.5:
+        return []
+
+    sources_result = await session.execute(select(Source).where(Source.run_id == run_id))
+    sources = [
+        {"status": s.status.value, "reason": s.reason, "domain": s.domain}
+        for s in sources_result.scalars().all()
+    ]
+
+    diagnostics = diagnose(stats, sources, target_count)
+    return [asdict(d) for d in diagnostics]
 
 
 @router.post("/tasks/{task_id}/runs")
@@ -102,18 +149,22 @@ async def stream_events(run_id: str, request: Request, after: int = 0):
 
                 for event in events:
                     cursor = event.id
+                    payload = {
+                        "id": event.id,
+                        "level": event.level.value,
+                        "step": event.step,
+                        "message": event.message,
+                        "created_at": event.created_at.isoformat(),
+                    }
+                    if event.data:
+                        payload["data"] = json.loads(event.data)
+
+                    # Use step as event type for structured events
+                    event_type = event.step if event.step == "records_updated" else "log"
                     yield {
-                        "event": "log",
+                        "event": event_type,
                         "id": str(event.id),
-                        "data": json.dumps(
-                            {
-                                "id": event.id,
-                                "level": event.level.value,
-                                "step": event.step,
-                                "message": event.message,
-                                "created_at": event.created_at.isoformat(),
-                            }
-                        ),
+                        "data": json.dumps(payload),
                     }
 
                 run_result = await session.execute(select(Run).where(Run.id == run_id))

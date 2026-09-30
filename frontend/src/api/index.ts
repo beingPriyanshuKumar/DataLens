@@ -120,3 +120,11 @@ export function createEventSource(
 export async function getPlatformStats(): Promise<PlatformStats> {
   return request("/stats");
 }
+
+export async function getReport(runId: string): Promise<import("../types").TrustReport> {
+  return request(`/runs/${runId}/report`);
+}
+
+export async function getDiagnostics(runId: string): Promise<import("../types").DiagnosticItem[]> {
+  return request(`/runs/${runId}/diagnostics`);
+}

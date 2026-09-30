@@ -61,6 +61,9 @@ export interface RunStats {
   pages_fetched?: number;
   pages_failed?: number;
   hallucinated_count?: number;
+  first_record_seconds?: number;
+  dropped_reasons?: Record<string, number>;
+  filters?: Record<string, string>;
 }
 
 export interface RecordDetail {
@@ -111,6 +114,7 @@ export interface RunEvent {
   step: string;
   message: string;
   created_at: string;
+  data?: Record<string, any>;
 }
 
 export interface TaskDetail {
@@ -134,3 +138,67 @@ export interface PlatformStats {
   sources_checked: number;
   unsupported_records_blocked: number;
 }
+
+export interface TrustSignal {
+  name: string;
+  label: string;
+  formula: string;
+  value: number;
+  threshold: number;
+  passed: boolean;
+}
+
+export interface FieldCompleteness {
+  name: string;
+  non_null_count: number;
+  total: number;
+  share: number;
+}
+
+export interface FunnelStep {
+  label: string;
+  count: number;
+  dropped: number;
+  drop_reasons: Record<string, number>;
+}
+
+export interface SourcesSummary {
+  fetched: number;
+  blocked_by_policy: number;
+  blocked_by_robots: number;
+  failed: number;
+  total: number;
+}
+
+export interface TrustReport {
+  funnel: FunnelStep[];
+  trust_signals: TrustSignal[];
+  field_completeness: FieldCompleteness[];
+  sources_summary: SourcesSummary;
+  record_count: number;
+  source_count: number;
+}
+
+export interface DiagnosticItem {
+  rule: string;
+  severity: "warning" | "info";
+  message: string;
+  action: string | null;
+}
+
+export interface TemplateSlot {
+  id: string;
+  label: string;
+  placeholder: string;
+  defaultValue: string;
+}
+
+export interface TemplateDefinition {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  slots: TemplateSlot[];
+  assemblePrompt: (values: Record<string, string>) => string;
+}
+

@@ -12,12 +12,17 @@ import ConfidenceBar from "../components/ConfidenceBar";
 import Drawer from "../components/Drawer";
 import EventLog from "../components/EventLog";
 import StateBlock from "../components/StateBlock";
+import ReportPanel from "../components/ReportPanel";
+import DiagnosticBanner from "../components/DiagnosticBanner";
+import StageChecklist from "../components/StageChecklist";
 import {
   getTask,
   getRun,
   getRecords,
   getRecord,
   getSources,
+  getReport,
+  getDiagnostics,
   cancelRun,
   createRun,
   getExportUrl,
@@ -36,6 +41,7 @@ const TABS: TabItem[] = [
   { id: "progress", label: "PROGRESS" },
   { id: "results", label: "RESULTS" },
   { id: "sources", label: "SOURCES" },
+  { id: "report", label: "REPORT" },
   { id: "history", label: "HISTORY" },
 ];
 
@@ -79,12 +85,19 @@ export default function TaskDetail() {
     refetchInterval: isActive ? 2000 : false,
   });
 
-  const { events, isDone } = useRunEvents(activeRunId, isActive);
+  const handleRecordsUpdated = () => {
+    queryClient.invalidateQueries({ queryKey: ["records", activeRunId] });
+    queryClient.invalidateQueries({ queryKey: ["run", activeRunId] });
+    queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+  };
+
+  const { events, isDone } = useRunEvents(activeRunId, isActive, handleRecordsUpdated);
 
   useEffect(() => {
     if (!isActive && activeRunId) {
       queryClient.invalidateQueries({ queryKey: ["task", taskId] });
       queryClient.invalidateQueries({ queryKey: ["run", activeRunId] });
+      queryClient.invalidateQueries({ queryKey: ["diagnostics", activeRunId] });
     }
   }, [isActive, activeRunId, taskId, queryClient]);
 
@@ -100,12 +113,25 @@ export default function TaskDetail() {
         order: sortOrder,
       }),
     enabled: !!activeRunId && tab === "results",
+    refetchInterval: isActive ? 2000 : false,
   });
 
   const sourcesQuery = useQuery({
     queryKey: ["sources", activeRunId],
     queryFn: () => getSources(activeRunId!),
     enabled: !!activeRunId && tab === "sources",
+  });
+
+  const reportQuery = useQuery({
+    queryKey: ["report", activeRunId],
+    queryFn: () => getReport(activeRunId!),
+    enabled: !!activeRunId && tab === "report",
+  });
+
+  const diagnosticsQuery = useQuery({
+    queryKey: ["diagnostics", activeRunId],
+    queryFn: () => getDiagnostics(activeRunId!),
+    enabled: !!activeRunId,
   });
 
   // Mutations
@@ -451,6 +477,22 @@ export default function TaskDetail() {
               />
             </div>
 
+            {/* Stage Checklist with Live "Now Reading" state */}
+            <StageChecklist
+              status={currentStatus}
+              stats={stats}
+              events={events}
+            />
+
+            {/* Zero-result / diagnostic banner */}
+            <DiagnosticBanner
+              diagnostics={diagnosticsQuery.data || []}
+              onActionClick={(action) => {
+                if (action.toLowerCase().includes("report")) setTab("report");
+                else if (action.toLowerCase().includes("seed") || action.toLowerCase().includes("sources")) setTab("sources");
+              }}
+            />
+
             {currentStatus === "cancelling" && (
               <div className="progress-tab__cancelling">
                 Cancelling after the current page finishes…
@@ -470,6 +512,15 @@ export default function TaskDetail() {
         {/* Tab 2: RESULTS */}
         {tab === "results" && (
           <div className="results-tab" id="panel-results" role="tabpanel">
+            {/* Diagnostics notice on results if low yield */}
+            <DiagnosticBanner
+              diagnostics={diagnosticsQuery.data || []}
+              onActionClick={(action) => {
+                if (action.toLowerCase().includes("report")) setTab("report");
+                else if (action.toLowerCase().includes("seed") || action.toLowerCase().includes("sources")) setTab("sources");
+              }}
+            />
+
             <div className="results-toolbar">
               <div className="results-toolbar__left">
                 <div className="results-search">
@@ -508,6 +559,24 @@ export default function TaskDetail() {
               </div>
 
               <div className="results-toolbar__right">
+                {isActive && (
+                  <span
+                    className="provisional-badge"
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "0.6875rem",
+                      fontWeight: 600,
+                      color: "var(--color-accent, #2563eb)",
+                      backgroundColor: "rgba(37, 99, 235, 0.1)",
+                      border: "1px solid rgba(37, 99, 235, 0.3)",
+                      padding: "0.25rem 0.5rem",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    LIVE · PROVISIONAL
+                  </span>
+                )}
+
                 <span className="results-count">
                   {recordsQuery.data ? `${recordsQuery.data.total} RECORDS` : ""}
                 </span>
@@ -634,7 +703,29 @@ export default function TaskDetail() {
           </div>
         )}
 
-        {/* Tab 4: HISTORY */}
+        {/* Tab 4: REPORT */}
+        {tab === "report" && (
+          <div className="report-tab" id="panel-report" role="tabpanel">
+            {reportQuery.isPending ? (
+              <StateBlock type="loading" message="COMPUTING TRUST REPORT…" />
+            ) : reportQuery.isError ? (
+              <StateBlock
+                type="error"
+                message={`Failed to generate report: ${reportQuery.error.message}`}
+                onRetry={() => reportQuery.refetch()}
+              />
+            ) : reportQuery.data ? (
+              <ReportPanel report={reportQuery.data} fields={fields} />
+            ) : (
+              <StateBlock
+                type="empty"
+                message="No report data available yet for this run."
+              />
+            )}
+          </div>
+        )}
+
+        {/* Tab 5: HISTORY */}
         {tab === "history" && (
           <div className="history-tab" id="panel-history" role="tabpanel">
             <div className="history-toolbar">
