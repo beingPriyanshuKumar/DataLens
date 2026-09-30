@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.planner import build_plan
 from app.core.rate_limit import api_limiter
 from app.core.runner import start_run
-from app.core.spec import parse_prompt
+from app.core.spec import enforce_required_fields, parse_prompt
 from app.db import get_session
 from app.models import Record, RecordEvidence, Run, RunEvent, RunStatus, Source, Task
 from app.schemas import (
@@ -41,9 +41,10 @@ async def create_task(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     await api_limiter.check(request)
+    spec = enforce_required_fields(req.spec)
     task = Task(
         prompt=req.prompt,
-        spec=req.spec.model_dump_json(),
+        spec=spec.model_dump_json(),
     )
     session.add(task)
     await session.flush()

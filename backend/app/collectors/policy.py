@@ -29,6 +29,10 @@ BLOCKED_DOMAINS = frozenset(
         "www.pinterest.com",
         "reddit.com",
         "www.reddit.com",
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "youtu.be",
     }
 )
 

@@ -206,6 +206,9 @@ async def execute_run(run_id: str) -> None:
                     await _update_run(run_id, status=RunStatus.FAILED, error="Task not found")
                     return
                 spec = TaskSpec.model_validate_json(task.spec)
+                from app.core.spec import enforce_required_fields
+
+                spec = enforce_required_fields(spec)
                 plan = Plan.model_validate_json(run.plan)
 
             # Snapshot the spec on the run for column stability
@@ -449,10 +452,11 @@ async def execute_run(run_id: str) -> None:
                         "search",
                         f"Yield shortfall ({current_yield}/{spec.target_count} records). Launching second search wave (budget: {remaining_budget} pages)...",
                     )
+                    topic = spec.title.strip() if spec.title and spec.title.strip() else spec.entity
                     wave2_queries = [
-                        f"{spec.entity} list directory 2026",
-                        f"top {spec.entity} database roundup",
-                        f"best {spec.entity} roundup",
+                        f"{topic} list 2026",
+                        f"top {topic} directory",
+                        f"best {topic} roundup",
                     ]
                     wave2_results = await search_multiple(
                         wave2_queries, limit_per_query=8, region=spec.region

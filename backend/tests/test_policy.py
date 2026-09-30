@@ -16,6 +16,7 @@ async def test_policy_blocked_domains():
         "https://twitter.com/user/status/1",
         "https://x.com/user",
         "https://www.reddit.com/r/python",
+        "https://www.youtube.com/watch?v=123",
     ]
     for url in urls:
         decision = await is_allowed(url)
