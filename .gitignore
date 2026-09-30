@@ -20,7 +20,7 @@ dist/
 report.md
 audit_report.md
 DIAGNOSIS.md
-prd
+prd/
 
 # Databases & Local State
 *.db
