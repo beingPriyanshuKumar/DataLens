@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import Button from "./Button";
 import "./Header.css";
@@ -5,54 +6,61 @@ import "./Header.css";
 export default function Header() {
   const location = useLocation();
   const navigate = useNavigate();
-  const isHome = location.pathname === "/";
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const handleNewTaskClick = () => {
-    if (isHome) {
-      const textarea = document.getElementById("prompt-input") as HTMLTextAreaElement | null;
-      if (textarea) {
-        textarea.scrollIntoView({ behavior: "smooth", block: "center" });
-        textarea.focus();
-      }
-    } else {
-      navigate("/#prompt-input");
-    }
-  };
+  const pathname = location.pathname;
 
   const navLinks = [
-    { label: "TASKS", href: isHome ? "#tasks" : "/#tasks" },
-    { label: "HOW IT WORKS", href: isHome ? "#how-it-works" : "/#how-it-works" },
-    { label: "POLICY", href: isHome ? "#policy" : "/#policy" },
+    { label: "HOME", to: "/", active: pathname === "/" },
+    { label: "COLLECT", to: "/collect", active: pathname.startsWith("/collect") },
+    { label: "TASKS", to: "/tasks", active: pathname.startsWith("/tasks") },
+    { label: "GUIDE", to: "/guide", active: pathname === "/guide" },
+    { label: "TRUST", to: "/trust", active: pathname === "/trust" },
   ];
 
   return (
     <header className="header" role="banner">
+      <a href="#main-content" className="header__skip-link">
+        Skip to content
+      </a>
       <div className="header__left">
         <Link to="/" className="header__logo" aria-label="DataLens Home">
           // DataLens
         </Link>
       </div>
       <div className="header__right">
-        <nav className="header__nav" aria-label="Main Navigation">
+        <button
+          className="header__menu-btn"
+          aria-label="Toggle navigation menu"
+          aria-expanded={mobileMenuOpen}
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        >
+          {mobileMenuOpen ? "✕" : "☰"}
+        </button>
+        <nav
+          className={`header__nav ${mobileMenuOpen ? "header__nav--open" : ""}`}
+          aria-label="Main Navigation"
+        >
           {navLinks.map((link) => (
-            <a
+            <Link
               key={link.label}
-              href={link.href}
-              className="header__nav-link"
-              onClick={(e) => {
-                if (isHome && link.href.startsWith("#")) {
-                  e.preventDefault();
-                  const target = document.querySelector(link.href);
-                  target?.scrollIntoView({ behavior: "smooth" });
-                }
-              }}
+              to={link.to}
+              className={`header__nav-link ${link.active ? "header__nav-link--active" : ""}`}
+              aria-current={link.active ? "page" : undefined}
+              onClick={() => setMobileMenuOpen(false)}
             >
               {link.label}
-            </a>
+            </Link>
           ))}
         </nav>
-        <Button variant="primary" onClick={handleNewTaskClick}>
-          NEW TASK
+        <Button
+          variant="primary"
+          onClick={() => {
+            setMobileMenuOpen(false);
+            navigate("/collect");
+          }}
+        >
+          NEW TASK ↗
         </Button>
       </div>
     </header>

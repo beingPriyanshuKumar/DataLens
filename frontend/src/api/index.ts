@@ -7,7 +7,6 @@ import type {
   TaskDetail,
   TaskSpec,
   Plan,
-  TaskSummary,
   PlatformStats,
 } from "../types";
 
@@ -27,11 +26,19 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export async function previewTask(prompt: string): Promise<PreviewResponse> {
+export async function previewTask(prompt: string, region: string = "GLOBAL"): Promise<PreviewResponse> {
   return request("/tasks/preview", {
     method: "POST",
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ prompt, region }),
   });
+}
+
+export async function getRegions(): Promise<import("../types").Region[]> {
+  return request("/regions");
+}
+
+export async function getPolicy(): Promise<import("../types").PolicyFacts> {
+  return request("/policy");
 }
 
 export async function createTask(
@@ -45,8 +52,22 @@ export async function createTask(
   });
 }
 
-export async function listTasks(): Promise<TaskSummary[]> {
-  return request("/tasks");
+export async function listTasks(params: {
+  q?: string;
+  status?: string;
+  sort?: string;
+  order?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<import("../types").TaskListResponse> {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") {
+      search.set(k, String(v));
+    }
+  });
+  const query = search.toString();
+  return request(`/tasks${query ? `?${query}` : ""}`);
 }
 
 export async function getTask(taskId: string): Promise<TaskDetail> {

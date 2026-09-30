@@ -1,0 +1,60 @@
+.not-found-page {
+  background-color: var(--color-backdrop);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.not-found-main {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  background-color: var(--color-surface);
+  border-left: var(--border);
+  border-right: var(--border);
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-7) var(--space-4);
+}
+
+.not-found-box {
+  border: var(--border);
+  padding: var(--space-6);
+  background-color: var(--color-surface);
+  max-width: 520px;
+  width: 100%;
+  text-align: center;
+}
+
+.not-found-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-red);
+  letter-spacing: 0.1em;
+  display: block;
+  margin-bottom: var(--space-2);
+}
+
+.not-found-title {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 var(--space-2) 0;
+  color: var(--color-ink);
+}
+
+.not-found-text {
+  font-size: 14px;
+  color: var(--color-ink-muted);
+  margin: 0 0 var(--space-5) 0;
+  line-height: 1.5;
+}
+
+.not-found-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}

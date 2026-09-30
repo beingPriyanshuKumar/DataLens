@@ -125,6 +125,23 @@ async def list_tasks(
                 error=latest_run.error,
             )
 
+        run_summaries = []
+        for r in runs:
+            c_res = await session.execute(
+                select(func.count(Record.id)).where(Record.run_id == r.id)
+            )
+            r_rec_count = c_res.scalar() or 0
+            run_summaries.append(
+                LatestRunSummary(
+                    id=r.id,
+                    status=r.status.value if r.status else "queued",
+                    started_at=r.started_at.isoformat() if r.started_at else None,
+                    finished_at=r.finished_at.isoformat() if r.finished_at else None,
+                    record_count=r_rec_count,
+                    error=r.error,
+                )
+            )
+
         if status and status.lower() != "all":
             if not latest_run or latest_run.status.value.lower() != status.lower():
                 continue
@@ -138,6 +155,7 @@ async def list_tasks(
                 created_at=task.created_at.isoformat(),
                 run_count=run_count,
                 latest_run=latest_summary,
+                runs=run_summaries,
             )
         )
 

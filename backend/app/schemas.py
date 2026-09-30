@@ -110,6 +110,7 @@ class TaskItem(BaseModel):
     created_at: str
     run_count: int
     latest_run: LatestRunSummary | None = None
+    runs: list[LatestRunSummary] = []
 
 
 class TaskListResponse(BaseModel):
