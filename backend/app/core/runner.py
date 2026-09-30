@@ -148,7 +148,8 @@ def _build_dataset(
     valid_records: list[dict] = []
     for rec in all_verified:
         normalized, norm_flags = normalize_record(rec, field_types)
-        is_valid, val_flags = validate_record(normalized, spec.fields, norm_flags)
+        existing_flags = list(rec.get("_flags", [])) + norm_flags
+        is_valid, val_flags = validate_record(normalized, spec.fields, existing_flags)
         if is_valid:
             normalized["_flags"] = val_flags
             valid_records.append(normalized)
@@ -197,6 +198,7 @@ async def execute_run(run_id: str) -> None:
             "pages_fetched": 0,
             "pages_failed": 0,
             "hallucinated_count": 0,
+            "fields_nulled": 0,
             "dropped_reasons": {},
         }
 
@@ -214,6 +216,7 @@ async def execute_run(run_id: str) -> None:
         all_verified_records: list[dict] = []
         pages_processed = 0
         total_fields = len(spec.fields)
+        warned_currency_mismatch = False
 
         for sr in search_results:
             if pages_processed >= plan.max_pages:
@@ -287,10 +290,16 @@ async def execute_run(run_id: str) -> None:
 
             pipeline_stats["raw_count"] += len(raw_records)
 
-            # Verify evidence
-            verified, hallucinated = verify_records(raw_records, result.text, result.url)
+            # Verify evidence and field-level grounding
+            field_types = {f.name: f.type for f in spec.fields}
+            verified, hallucinated, fields_nulled = verify_records(
+                raw_records, result.text, result.url, field_types=field_types
+            )
             pipeline_stats["hallucinated_count"] += hallucinated
             pipeline_stats["verified_count"] += len(verified)
+            pipeline_stats["fields_nulled"] = (
+                pipeline_stats.get("fields_nulled", 0) + fields_nulled
+            )
             if hallucinated > 0:
                 pipeline_stats["dropped_reasons"]["evidence_mismatch"] = (
                     pipeline_stats["dropped_reasons"].get("evidence_mismatch", 0) + hallucinated
@@ -328,6 +337,21 @@ async def execute_run(run_id: str) -> None:
                 # Deep-copy to avoid mutating the accumulated pool
                 pool_copy = [dict(r) for r in all_verified_records]
                 deduped_snapshot = _build_dataset(pool_copy, spec)
+
+                # Warn if any currency mismatches detected
+                cm_count = sum(
+                    1
+                    for r in pool_copy
+                    if any("currency_mismatch" in f for f in r.get("_flags", []))
+                )
+                if cm_count > 0 and not warned_currency_mismatch:
+                    await emit(
+                        run_id,
+                        EventLevel.WARN,
+                        "normalize",
+                        f"Detected {cm_count} currency mismatch(es) — nulled invalid values",
+                    )
+                    warned_currency_mismatch = True
 
                 # Count validation drops for stats
                 pipeline_stats["valid_count"] = len(

@@ -128,3 +128,38 @@ def test_normalize_record_flags_invalid_inputs():
     assert normalized["posted_date"] is None
     assert "invalid_date_posted_date" in flags
     assert "invalid_number_salary" in flags
+
+
+def test_normalize_record_currency_mismatch_u1():
+    """Reproduce U1 '$499 as price_inr': numeric field with _inr suffix disagrees with $ symbol."""
+    record = {
+        "title": "Smartphone X",
+        "price_inr": "$499",
+        "evidence": "Smartphone X is available for $499",
+    }
+    field_types = {
+        "title": "str",
+        "price_inr": "float",
+    }
+    normalized, flags = normalize_record(record, field_types)
+    assert normalized["price_inr"] is None
+    assert "currency_mismatch" in flags
+    assert "currency_mismatch_price_inr" in flags
+
+
+def test_normalize_record_currency_match():
+    """When currency symbol matches field suffix, number is properly normalized."""
+    record = {
+        "title": "Smartphone X",
+        "price_inr": "₹49,999",
+        "price_usd": "$499",
+    }
+    field_types = {
+        "title": "str",
+        "price_inr": "float",
+        "price_usd": "float",
+    }
+    normalized, flags = normalize_record(record, field_types)
+    assert normalized["price_inr"] == 49999.0
+    assert normalized["price_usd"] == 499.0
+    assert "currency_mismatch" not in flags

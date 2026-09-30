@@ -80,6 +80,29 @@ def normalize_number(value: str | int | float | None) -> float | None:
         return None
 
 
+CURRENCY_PATTERNS = {
+    "inr": re.compile(r"(₹|\b(rs\.?|inr|rupees?)\b)", re.IGNORECASE),
+    "usd": re.compile(r"(\$|\b(usd|dollars?)\b)", re.IGNORECASE),
+    "eur": re.compile(r"(€|\b(eur|euros?)\b)", re.IGNORECASE),
+    "gbp": re.compile(r"(£|\b(gbp|pounds?)\b)", re.IGNORECASE),
+}
+
+CURRENCY_SUFFIXES = {
+    "_inr": "inr",
+    "_usd": "usd",
+    "_eur": "eur",
+    "_gbp": "gbp",
+}
+
+
+def detect_currency(value_str: str) -> str | None:
+    """Detect currency symbol or code in a string."""
+    for curr, pattern in CURRENCY_PATTERNS.items():
+        if pattern.search(value_str):
+            return curr
+    return None
+
+
 def normalize_record(
     record: dict,
     field_types: dict[str, str],
@@ -118,10 +141,24 @@ def normalize_record(
         elif field_type == "email":
             normalized[name] = normalize_email(value if isinstance(value, str) else None)
         elif field_type in ("int", "float"):
-            num = normalize_number(value)
-            normalized[name] = int(num) if field_type == "int" and num is not None else num
-            if value is not None and num is None:
-                flags.append(f"invalid_number_{name}")
+            currency_mismatched = False
+            if isinstance(value, str):
+                name_lower = name.lower()
+                for suffix, expected_curr in CURRENCY_SUFFIXES.items():
+                    if name_lower.endswith(suffix):
+                        detected = detect_currency(value)
+                        if detected is not None and detected != expected_curr:
+                            currency_mismatched = True
+                            break
+            if currency_mismatched:
+                normalized[name] = None
+                flags.append("currency_mismatch")
+                flags.append(f"currency_mismatch_{name}")
+            else:
+                num = normalize_number(value)
+                normalized[name] = int(num) if field_type == "int" and num is not None else num
+                if value is not None and num is None:
+                    flags.append(f"invalid_number_{name}")
         else:
             normalized[name] = value
 

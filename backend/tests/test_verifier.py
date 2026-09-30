@@ -39,7 +39,67 @@ def test_verify_records_drops_hallucinations():
         },
     ]
 
-    verified, hallucinated_count = verify_records(records, page_text, "https://example.com/news")
+    verified, hallucinated_count, fields_nulled = verify_records(
+        records, page_text, "https://example.com/news"
+    )
     assert len(verified) == 1
     assert verified[0]["company"] == "Stripe"
     assert hallucinated_count == 1
+    assert fields_nulled == 0
+
+
+def test_verify_evidence_advanced_normalization():
+    """Verify smart quotes, dashes, ellipses, non-breaking spaces, zero-width chars."""
+    page_text = "Acme\u00a0Corp announced a “mega-deal” – worth $50M… &amp; more.\u200b"
+    snippet = 'Acme Corp announced a "mega-deal" - worth $50M... & more.'
+    assert verify_evidence(snippet, page_text) is True
+
+
+def test_verify_records_field_grounding_india_in_founders():
+    """Reproduce P2 'India in founders' case: imputed value not in context becomes null."""
+    page_text = (
+        "Directory of Tech Companies\n"
+        "Region: India\n"
+        "--------------------------------------------------\n"
+        "Zepto raised $200M Series E in Mumbai in Jan 2025. Contact: founders@zepto.in\n"
+    )
+    records = [
+        {
+            "company": "Zepto",
+            "amount": 200,
+            "founders": "India",  # Imputed from page header outside entity context
+            "evidence": "Zepto raised $200M Series E in Mumbai in Jan 2025.",
+        }
+    ]
+
+    verified, hallucinated, fields_nulled = verify_records(
+        records, page_text, "https://example.com/startups"
+    )
+    assert len(verified) == 1
+    rec = verified[0]
+    assert rec["company"] == "Zepto"  # Grounded
+    assert rec["founders"] is None  # Imputed value was nulled!
+    assert "unsupported_value" in rec["_flags"]
+    assert "unsupported_value_founders" in rec["_flags"]
+    assert fields_nulled == 1
+
+
+def test_verify_records_valid_fields_preserved():
+    """Valid fields present in evidence or surrounding chunk are preserved."""
+    page_text = "Aadit Palicha founded Zepto in Mumbai and raised $200M in 2025."
+    records = [
+        {
+            "company": "Zepto",
+            "founders": "Aadit Palicha",
+            "evidence": "Aadit Palicha founded Zepto in Mumbai and raised $200M in 2025.",
+        }
+    ]
+
+    verified, hallucinated, fields_nulled = verify_records(
+        records, page_text, "https://example.com/startups"
+    )
+    assert len(verified) == 1
+    rec = verified[0]
+    assert rec["company"] == "Zepto"
+    assert rec["founders"] == "Aadit Palicha"
+    assert fields_nulled == 0

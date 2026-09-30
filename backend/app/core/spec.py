@@ -14,6 +14,7 @@ Rules:
 - Do NOT include a source URL field — provenance is tracked separately.
 - Prefer fewer, higher-quality fields over many speculative ones.
 - Field types: str, int, float, bool, date, url, email.
+- Never bake a currency into a field name unless the user asked for that currency; use a numeric price-style field plus a currency field (e.g. price and currency, not price_usd).
 - Always mark truly identifying fields as required=true."""
 
 
