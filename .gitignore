@@ -17,6 +17,10 @@ dist/
 .cache/
 .ruff_cache/
 .pytest_cache/
+report.md
+audit_report.md
+DIAGNOSIS.md
+prd
 
 # Databases & Local State
 *.db
